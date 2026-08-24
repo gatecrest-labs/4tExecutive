@@ -1,0 +1,8 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password_hash": "REPLACE_WITH_BCRYPT_HASH"
+    }
+  ]
+}

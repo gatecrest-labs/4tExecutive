@@ -1,0 +1,10 @@
+{
+  "executives": {
+    "members": ["admin"],
+    "allowed_tabs": ["dashboard"]
+  },
+  "administrators": {
+    "members": ["admin"],
+    "allowed_tabs": ["dashboard", "admin"]
+  }
+}
