@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -10,6 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.metrics_db import get_last_polled, set_last_polled, write_snapshot
 from app.sources import get_source, list_sources, source_headers
 
+logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT_SECONDS = 10
 
 
@@ -23,14 +25,19 @@ def poll_source(source: dict) -> bool:
         response = requests.get(
             url, headers=source_headers(source), timeout=REQUEST_TIMEOUT_SECONDS
         )
-    except requests.RequestException:
+        if response.status_code != 200:
+            logger.warning("Poll failed for source %s: HTTP %s", source["id"], response.status_code)
+            return False
+
+        write_snapshot(source["id"], "summary", response.json(), _now_iso())
+        set_last_polled(source["id"], _now_iso())
+    except requests.RequestException as exc:
+        logger.warning("Poll failed for source %s: %s", source["id"], exc)
+        return False
+    except Exception as exc:
+        logger.warning("Poll failed for source %s: %s", source["id"], exc)
         return False
 
-    if response.status_code != 200:
-        return False
-
-    write_snapshot(source["id"], "summary", response.json(), _now_iso())
-    set_last_polled(source["id"], _now_iso())
     return True
 
 

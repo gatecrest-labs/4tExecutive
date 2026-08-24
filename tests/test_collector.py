@@ -121,3 +121,90 @@ def test_poll_now_ignores_due_check():
 
 def test_poll_now_returns_false_for_unknown_source():
     assert poll_now("does-not-exist") is False
+
+
+def test_poll_source_logs_warning_on_request_exception():
+    source = _source()
+
+    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
+        with patch("app.collector.logger") as mock_logger:
+            result = poll_source(source)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
+    call_args = mock_logger.warning.call_args
+    assert "4thealth-east" in str(call_args)
+    assert "down" in str(call_args)
+
+
+def test_poll_source_logs_warning_on_http_error():
+    source = _source()
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 503
+        with patch("app.collector.logger") as mock_logger:
+            result = poll_source(source)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
+    call_args = mock_logger.warning.call_args
+    assert "4thealth-east" in str(call_args)
+    assert "503" in str(call_args)
+
+
+def test_poll_source_catches_malformed_json_and_returns_false():
+    source = _source()
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.side_effect = ValueError("Invalid JSON")
+
+        result = poll_source(source)
+
+    assert result is False
+    assert get_latest("4thealth-east", "summary") is None
+
+
+def test_poll_source_catches_write_snapshot_error_and_returns_false():
+    source = _source()
+    response_json = {"hygiene_score": 92}
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = response_json
+        with patch("app.collector.write_snapshot", side_effect=IOError("DB error")):
+            result = poll_source(source)
+
+    assert result is False
+
+
+def test_poll_source_catches_set_last_polled_error_and_returns_false():
+    source = _source()
+    response_json = {"hygiene_score": 92}
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = response_json
+        with patch("app.collector.set_last_polled", side_effect=IOError("DB error")):
+            result = poll_source(source)
+
+    assert result is False
+
+
+def test_poll_all_continues_after_failed_source():
+    sources_module.add_source(**_source(id="source-1"))
+    sources_module.add_source(**_source(id="source-2"))
+
+    with patch("app.collector.requests.get") as mock_get:
+        # First source fails, second succeeds
+        responses = [
+            Exception("Connection error"),
+            type("MockResponse", (), {"status_code": 200, "json": lambda: {"score": 50}})(),
+        ]
+        mock_get.side_effect = responses
+
+        # Should not raise, should continue to second source
+        poll_all()
+
+    # Second source should have been attempted despite first failing
+    assert mock_get.call_count == 2
