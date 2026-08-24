@@ -208,3 +208,75 @@ def test_poll_all_continues_after_failed_source():
 
     # Second source should have been attempted despite first failing
     assert mock_get.call_count == 2
+
+
+def test_poll_source_raises_no_keyerror_when_base_url_missing():
+    source = _source()
+    del source["base_url"]
+
+    # Should not raise KeyError; should be caught and reported as a failed poll.
+    result = poll_source(source)
+
+    assert result is False
+
+
+def test_poll_all_continues_when_source_missing_poll_interval_minutes():
+    sources_module.add_source(**_source(id="bad-source"))
+    sources_module.add_source(**_source(id="good-source"))
+    from app.metrics_db import set_last_polled
+
+    # _is_due only reads poll_interval_minutes once there's a prior
+    # last_polled timestamp to compare against.
+    set_last_polled("bad-source", "2020-01-01T00:00:00Z")
+
+    # Corrupt the first source's record (simulating bad on-disk data) so
+    # _is_due raises a KeyError for it.
+    all_sources = sources_module.list_sources()
+    for s in all_sources:
+        if s["id"] == "bad-source":
+            del s["poll_interval_minutes"]
+    sources_module._save(all_sources)  # simulating corrupted config on disk
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"score": 50}
+        poll_all()
+
+    # good-source should still have been polled despite bad-source's corrupt record.
+    mock_get.assert_called_once()
+
+
+def test_poll_source_records_last_polled_on_http_error():
+    source = _source()
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 503
+        poll_source(source)
+
+    assert get_last_polled("4thealth-east") is not None
+
+
+def test_poll_source_records_last_polled_on_connection_error():
+    source = _source()
+
+    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
+        poll_source(source)
+
+    assert get_last_polled("4thealth-east") is not None
+
+
+def test_poll_all_does_not_retry_down_source_before_interval_elapses():
+    sources_module.add_source(**_source())
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 503
+        poll_all()
+
+    assert mock_get.call_count == 1
+
+    # A second poll_all pass immediately after should NOT retry, since
+    # poll_interval_minutes (15) has not elapsed since the failed attempt.
+    with patch("app.collector.requests.get") as mock_get_second:
+        poll_all()
+
+    mock_get_second.assert_not_called()

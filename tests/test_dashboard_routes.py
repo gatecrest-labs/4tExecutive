@@ -97,3 +97,30 @@ def test_post_layout_rejects_unknown_widget_type(client, tmp_path, monkeypatch):
     response = client.post("/dashboard/layout", json=[{"type": "bogus", "source_instance": "s1"}])
 
     assert response.status_code == 400
+
+
+def test_post_layout_rejects_non_list_body(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.post("/dashboard/layout", json={"type": "4thealth.hygiene_score"})
+
+    assert response.status_code == 400
+
+
+def test_post_layout_rejects_list_items_missing_type(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.post("/dashboard/layout", json=[{"source_instance": "s1"}])
+
+    assert response.status_code == 400
+
+
+def test_post_layout_rejects_list_of_non_dict_items(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.post("/dashboard/layout", json=["not-a-widget"])
+
+    assert response.status_code == 400

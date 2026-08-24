@@ -20,14 +20,35 @@ def sources():
 @bp.route("/sources", methods=["POST"])
 @tab_required("admin")
 def add_source_route():
-    add_source(
-        id=request.form["id"],
-        system=request.form["system"],
-        name=request.form["name"],
-        base_url=request.form["base_url"],
-        token=request.form["token"],
-        poll_interval_minutes=int(request.form.get("poll_interval_minutes", 15)),
-    )
+    base_url = request.form["base_url"]
+    if not base_url.startswith("https://"):
+        return render_template(
+            "admin/sources.html",
+            sources=list_sources(),
+            error="Base URL must start with https:// (bearer token would otherwise be sent in cleartext).",
+        )
+
+    try:
+        poll_interval_minutes = int(request.form.get("poll_interval_minutes", 15))
+    except ValueError:
+        return render_template(
+            "admin/sources.html",
+            sources=list_sources(),
+            error="Poll interval (minutes) must be a whole number.",
+        )
+
+    try:
+        add_source(
+            id=request.form["id"],
+            system=request.form["system"],
+            name=request.form["name"],
+            base_url=base_url,
+            token=request.form["token"],
+            poll_interval_minutes=poll_interval_minutes,
+        )
+    except ValueError as exc:
+        return render_template("admin/sources.html", sources=list_sources(), error=str(exc))
+
     return redirect(url_for("admin.sources"))
 
 

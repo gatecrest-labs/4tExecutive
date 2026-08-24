@@ -9,10 +9,28 @@ from flask import Flask
 from app.config_paths import bootstrap_config
 from app.groups import user_has_tab
 
+# Matches the placeholder value shipped in .env.example — if an operator copies
+# .env.example to .env without changing it, we must refuse to boot rather than
+# sign session cookies with a publicly known key.
+_PLACEHOLDER_SECRET_KEY = "change-me-to-a-random-value"
+
 
 def create_app(testing: bool = False) -> Flask:
     flask_app = Flask(__name__)
-    flask_app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+
+    if testing:
+        flask_app.secret_key = "dev-only-change-me"
+    else:
+        secret_key = os.environ.get("SECRET_KEY")
+        if not secret_key or secret_key == _PLACEHOLDER_SECRET_KEY:
+            raise RuntimeError(
+                "SECRET_KEY environment variable must be set to a real secret "
+                "value (not the .env.example placeholder) before starting the "
+                "app outside of testing mode."
+            )
+        flask_app.secret_key = secret_key
+
+    flask_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     flask_app.testing = testing
 
     if not testing:

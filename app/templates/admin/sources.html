@@ -24,6 +24,7 @@
 </table>
 
 <h2>Add source</h2>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="{{ url_for('admin.add_source_route') }}">
   <label>ID <input name="id"></label>
   <label>System <input name="system" placeholder="4thealth / 4tlog"></label>

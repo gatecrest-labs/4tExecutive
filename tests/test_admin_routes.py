@@ -72,6 +72,66 @@ def test_delete_source(client, tmp_path, monkeypatch):
     assert sources_module.get_source("s1") is None
 
 
+def test_add_source_duplicate_id_shows_error_instead_of_500(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    sources_module.add_source(id="dup", system="4thealth", name="A", base_url="https://a", token="t")
+
+    response = client.post(
+        "/admin/sources",
+        data={
+            "id": "dup",
+            "system": "4thealth",
+            "name": "B",
+            "base_url": "https://b",
+            "token": "secret",
+            "poll_interval_minutes": "15",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"source id already exists" in response.data
+
+
+def test_add_source_non_numeric_poll_interval_shows_error_instead_of_500(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+
+    response = client.post(
+        "/admin/sources",
+        data={
+            "id": "s1",
+            "system": "4thealth",
+            "name": "A",
+            "base_url": "https://a",
+            "token": "secret",
+            "poll_interval_minutes": "not-a-number",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"error" in response.data.lower()
+    assert sources_module.get_source("s1") is None
+
+
+def test_add_source_rejects_non_https_base_url(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+
+    response = client.post(
+        "/admin/sources",
+        data={
+            "id": "s1",
+            "system": "4thealth",
+            "name": "A",
+            "base_url": "http://insecure.internal",
+            "token": "secret",
+            "poll_interval_minutes": "15",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"https" in response.data.lower()
+    assert sources_module.get_source("s1") is None
+
+
 def test_refresh_source_triggers_poll_now(client, tmp_path, monkeypatch):
     _login_as_admin(client, tmp_path, monkeypatch)
     sources_module.add_source(id="s1", system="4thealth", name="A", base_url="https://a", token="t")

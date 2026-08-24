@@ -25,7 +25,13 @@ def verify_password(username: str, password: str) -> bool:
     user = get_user(username)
     if user is None:
         return False
-    return bcrypt.checkpw(password.encode(), user["password_hash"].encode())
+    try:
+        return bcrypt.checkpw(password.encode(), user["password_hash"].encode())
+    except ValueError:
+        # Raised by bcrypt for a malformed/invalid hash (e.g. an unbootstrapped
+        # "REPLACE_WITH_BCRYPT_HASH" placeholder) or an over-long password.
+        # Treat both as a failed login rather than a 500.
+        return False
 
 
 def hash_password(password: str) -> str:
