@@ -15,6 +15,16 @@ from app.groups import user_has_tab
 _PLACEHOLDER_SECRET_KEY = "change-me-to-a-random-value"
 
 
+def _resolve_cookie_secure() -> bool:
+    """Mirror 4thealth's convention: auto-enable Secure cookies when TLS cert
+    files are present, override with COOKIE_SECURE=true|false."""
+    cert = os.environ.get("SSL_CERT", "certs/cert.pem")
+    key = os.environ.get("SSL_KEY", "certs/key.pem")
+    ssl_active = os.path.exists(cert) and os.path.exists(key)
+    setting = os.environ.get("COOKIE_SECURE", "auto").lower()
+    return setting == "true" or (setting == "auto" and ssl_active)
+
+
 def create_app(testing: bool = False) -> Flask:
     flask_app = Flask(__name__)
 
@@ -31,6 +41,7 @@ def create_app(testing: bool = False) -> Flask:
         flask_app.secret_key = secret_key
 
     flask_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    flask_app.config["SESSION_COOKIE_SECURE"] = _resolve_cookie_secure()
     flask_app.testing = testing
 
     if not testing:

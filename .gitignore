@@ -2,6 +2,7 @@
 config/*.json
 !config/examples/*.example.json
 config/certs/
+certs/
 metrics.db
 .env
 __pycache__/
