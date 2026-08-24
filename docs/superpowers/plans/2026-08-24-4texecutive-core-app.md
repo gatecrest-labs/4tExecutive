@@ -2516,16 +2516,262 @@ services:
       start_period: 15s
 ```
 
-- [ ] **Step 4: Verify the image builds**
+- [ ] **Step 4: Write `.env.example`**
+
+```
+SECRET_KEY=change-me-to-a-random-value
+```
+
+- [ ] **Step 5: Verify the image builds**
 
 Run: `docker compose build`
 Expected: build succeeds with no errors
 
+- [ ] **Step 6: Commit**
+
+```bash
+git add Dockerfile docker-compose.yml wsgi.py .env.example
+git commit -m "feat: add Docker deployment files"
+```
+
+---
+
+### Task 16: Demo seed script for visual QA
+
+**Files:**
+- Create: `seed_demo_data.py`
+- Test: `tests/test_seed_demo_data.py`
+
+**Purpose:** Task 15 gives you a runnable container, but an empty one — no
+users, no sources, no cached metrics, so the Dashboard renders nothing and
+there's nothing to log in with. This task adds a script that populates
+`config/` and `metrics.db` with a demo login and a full page of fake widget
+data — covering every catalog entry and all three widget sizes — purely so
+you can look at the real rendered page. It writes metrics snapshots
+directly (bypassing the collector/HTTP layer entirely), so it works with no
+network access and no running source systems.
+
+**Interfaces:**
+- Consumes: `app.config_paths.bootstrap_config`, `app.metrics_db.init_db`,
+  `app.metrics_db.write_snapshot`, `app.sources.add_source`,
+  `app.layouts.save_layout`, `app.atomic_io.atomic_write_json`,
+  `app.groups.GROUPS_PATH`, `manage_users.create_user`,
+  `app.widgets.WIDGET_CATALOG`.
+- Produces: `seed() -> None`, run via `python seed_demo_data.py`. Nothing
+  else depends on this — it's a standalone dev/demo tool, not imported by
+  the app.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_seed_demo_data.py
+import app.groups as groups_module
+import app.metrics_db as metrics_db
+import app.sources as sources_module
+import manage_users
+from app.config_paths import bootstrap_config
+from app.layouts import get_layout
+from app.metrics_db import get_latest, init_db
+from app.widgets import WIDGET_CATALOG
+from seed_demo_data import DEMO_PASSWORD, DEMO_USERNAME, seed
+
+
+def _patch_all_paths(tmp_path, monkeypatch):
+    import app.config_paths as config_paths_module
+
+    config_dir = tmp_path / "config"
+    monkeypatch.setattr(config_paths_module, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_paths_module, "EXAMPLES_DIR", config_dir / "examples")
+    monkeypatch.setattr(groups_module, "GROUPS_PATH", config_dir / "groups.json")
+    monkeypatch.setattr(sources_module, "SOURCES_PATH", config_dir / "sources.json")
+    monkeypatch.setattr(manage_users, "USERS_PATH", config_dir / "users.json")
+
+    import app.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "USERS_PATH", config_dir / "users.json")
+    monkeypatch.setattr(metrics_db, "DB_PATH", tmp_path / "metrics.db")
+    (config_dir / "examples").mkdir(parents=True)
+    init_db()
+
+
+def test_seed_creates_demo_user(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    assert DEMO_USERNAME in manage_users.list_users()
+
+
+def test_seed_grants_dashboard_and_admin_tabs(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    from app.groups import user_has_tab
+
+    assert user_has_tab(DEMO_USERNAME, "dashboard") is True
+    assert user_has_tab(DEMO_USERNAME, "admin") is True
+
+
+def test_seed_adds_sources(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    assert len(sources_module.list_sources()) >= 2
+
+
+def test_seed_populates_a_snapshot_for_every_catalog_entry(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    from app.widgets import get_widget_value
+
+    layout = get_layout(DEMO_USERNAME)
+    assert len(layout) == len(WIDGET_CATALOG)
+    for widget in layout:
+        assert get_widget_value(widget) is not None
+
+
+def test_seed_layout_uses_varied_sizes(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    sizes = {widget["size"] for widget in get_layout(DEMO_USERNAME)}
+    assert sizes == {"1x1", "2x1", "2x2"}
+
+
+def test_seed_is_idempotent(tmp_path, monkeypatch):
+    _patch_all_paths(tmp_path, monkeypatch)
+    seed()
+    seed()  # must not raise on duplicate user/source ids
+    assert manage_users.list_users().count(DEMO_USERNAME) == 1
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_seed_demo_data.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'seed_demo_data'`
+
+- [ ] **Step 3: Write `seed_demo_data.py`**
+
+```python
+#!/usr/bin/env python3
+"""Populate config/ and metrics.db with fake data for visual QA.
+
+Run with: python seed_demo_data.py
+Then: docker compose up --build, and log in at http://localhost:8200
+with DEMO_USERNAME / DEMO_PASSWORD (printed below).
+
+Writes metrics snapshots directly — no network calls, no real source
+systems required.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import app.sources as sources_module
+import manage_users
+from app.atomic_io import atomic_write_json
+from app.config_paths import bootstrap_config
+from app.groups import GROUPS_PATH
+from app.layouts import save_layout
+from app.metrics_db import init_db, write_snapshot
+from app.widgets import WIDGET_CATALOG
+
+DEMO_USERNAME = "demo"
+DEMO_PASSWORD = "demo-password-123"
+
+_DEMO_SOURCES = [
+    {
+        "id": "demo-4thealth",
+        "system": "4thealth",
+        "name": "Demo — 4thealth (HQ)",
+        "base_url": "https://demo-4thealth.invalid:8100",
+    },
+    {
+        "id": "demo-4tlog",
+        "system": "4tlog",
+        "name": "Demo — 4tlog (HQ)",
+        "base_url": "https://demo-4tlog.invalid:8100",
+    },
+]
+
+_DEMO_SNAPSHOT_VALUES = {
+    "demo-4thealth": {
+        "hygiene_score": 94,
+        "version_compliance_pct": 88,
+        "pending_config_diff_count": 3,
+        "last_backup_status": "OK — 2026-08-23T02:00:00Z",
+        "firewall_online_count": 12,
+    },
+    "demo-4tlog": {
+        "faz_health": "Healthy (2 of 2 targets up)",
+        "log_volume_trend": "12.4M events/day (+3% week over week)",
+    },
+}
+
+_SIZE_CYCLE = ["1x1", "2x1", "2x2"]
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def seed() -> None:
+    bootstrap_config()
+    init_db()
+
+    if DEMO_USERNAME not in manage_users.list_users():
+        manage_users.create_user(DEMO_USERNAME, DEMO_PASSWORD)
+
+    atomic_write_json(
+        GROUPS_PATH,
+        {
+            "demo": {
+                "members": [DEMO_USERNAME],
+                "allowed_tabs": ["dashboard", "admin"],
+            }
+        },
+    )
+
+    for demo_source in _DEMO_SOURCES:
+        if sources_module.get_source(demo_source["id"]) is None:
+            sources_module.add_source(
+                id=demo_source["id"],
+                system=demo_source["system"],
+                name=demo_source["name"],
+                base_url=demo_source["base_url"],
+                token="demo-token-not-a-real-secret",
+                enabled=False,  # demo hosts don't exist; avoid noisy failed polls
+            )
+        write_snapshot(
+            demo_source["id"], "summary", _DEMO_SNAPSHOT_VALUES[demo_source["id"]], _now_iso()
+        )
+
+    layout = []
+    for index, (widget_type, entry) in enumerate(WIDGET_CATALOG.items()):
+        source_id = "demo-4thealth" if entry["source_system"] == "4thealth" else "demo-4tlog"
+        layout.append(
+            {
+                "type": widget_type,
+                "source_instance": source_id,
+                "size": _SIZE_CYCLE[index % len(_SIZE_CYCLE)],
+                "date_range": "30d",
+            }
+        )
+    save_layout(DEMO_USERNAME, layout)
+
+    print(f"Seeded demo data. Log in with username={DEMO_USERNAME!r} password={DEMO_PASSWORD!r}")
+
+
+if __name__ == "__main__":
+    seed()
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_seed_demo_data.py -v`
+Expected: PASS (6 tests)
+
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Dockerfile docker-compose.yml wsgi.py
-git commit -m "feat: add Docker deployment files"
+git add seed_demo_data.py tests/test_seed_demo_data.py
+git commit -m "feat: add demo data seed script for visual QA"
 ```
 
 ---
@@ -2534,4 +2780,25 @@ git commit -m "feat: add Docker deployment files"
 
 - [ ] Run the full test suite once more: `pytest -v` — all tests pass
 - [ ] Run `ruff check .` and fix any lint issues
-- [ ] Manually create a config directory (`cp -r config/examples config-real && mv config-real/*.example.json ...` or run `python -c "from app.config_paths import bootstrap_config; bootstrap_config()"`), create an admin user via `manage_users.py create admin <password>`, add `admin`/`dashboard` groups to `config/groups.json`, and smoke-test `docker compose up` locally: log in, add a fake source, hit "Refresh now" against a local mock server, confirm the dashboard renders a widget once a layout is saved.
+- [ ] Visual QA in a container, using seeded demo data:
+  ```bash
+  cp .env.example .env   # edit SECRET_KEY if you like
+  python seed_demo_data.py   # creates config/ and metrics.db on the host,
+                              # which docker-compose then bind-mounts in —
+                              # this also avoids Docker creating an empty
+                              # directory where metrics.db should be a file
+  docker compose up --build
+  ```
+  Then open `http://localhost:8200/login`, log in with the
+  `username`/`password` printed by `seed_demo_data.py`, and check:
+  - **Dashboard tab**: every widget in the catalog renders with a value
+    and an "as of" timestamp, across all three sizes (1x1/2x1/2x2), so you
+    can eyeball the grid layout and styling.
+  - **Admin tab**: both demo sources are listed (shown as disabled, since
+    their URLs are fake — clicking "Refresh now" on one is a good way to
+    see the "source unreachable, degrade gracefully" behavior in
+    `app/collector.py` in action without it crashing anything).
+  - Add a real source in Admin pointing at nothing reachable, confirm
+    "Refresh now" doesn't 500.
+  - `docker compose down` when finished; rerun `python seed_demo_data.py`
+    any time to reset/replenish demo data (it's idempotent).
