@@ -5,6 +5,7 @@ import pytest
 
 import app.auth as auth_module
 import app.config_paths as config_paths
+import app.groups as groups_module
 
 
 @pytest.fixture
@@ -26,3 +27,22 @@ def tmp_users_file(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(auth_module, "USERS_PATH", users_path)
     return users_path
+
+
+@pytest.fixture
+def tmp_groups_file(tmp_path, monkeypatch):
+    groups_path = tmp_path / "groups.json"
+    groups_path.write_text(
+        json.dumps(
+            {
+                "executives": {"members": ["alice"], "allowed_tabs": ["dashboard"]},
+                "administrators": {
+                    "members": ["alice"],
+                    "allowed_tabs": ["dashboard", "admin"],
+                },
+                "developers": {"members": ["carol"], "allowed_tabs": ["admin"]},
+            }
+        )
+    )
+    monkeypatch.setattr(groups_module, "GROUPS_PATH", groups_path)
+    return groups_path
