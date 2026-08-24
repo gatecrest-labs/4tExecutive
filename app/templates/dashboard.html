@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+{% if edit_mode %}
+  <p>Edit mode — available widgets:</p>
+  <ul>
+    {% for type, entry in catalog.items() %}
+      <li>{{ entry.label }} ({{ entry.source_system }})</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+<div class="widget-grid">
+  {% for widget in widgets %}
+    <div class="widget widget-{{ widget.size|default('1x1') }}">
+      <h3>{{ widget.label }}</h3>
+      {% if widget.data %}
+        <p class="widget-value">{{ widget.data.value }}</p>
+        <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+      {% else %}
+        <p class="widget-empty">No data yet</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
