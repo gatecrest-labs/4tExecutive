@@ -6,6 +6,7 @@ import pytest
 import app.auth as auth_module
 import app.config_paths as config_paths
 import app.groups as groups_module
+from app import create_app
 
 
 @pytest.fixture
@@ -46,3 +47,17 @@ def tmp_groups_file(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(groups_module, "GROUPS_PATH", groups_path)
     return groups_path
+
+
+@pytest.fixture
+def app(tmp_config_dir, tmp_path, monkeypatch):
+    import app.metrics_db as metrics_db_module
+
+    monkeypatch.setattr(metrics_db_module, "DB_PATH", tmp_path / "metrics.db")
+    flask_app = create_app(testing=True)
+    return flask_app
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
