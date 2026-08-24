@@ -32,8 +32,11 @@ def index():
 @tab_required("dashboard")
 def edit():
     layout = get_layout(session["username"])
+    widgets = [
+        {**widget, "label": WIDGET_CATALOG[widget["type"]]["label"]} for widget in layout
+    ]
     return render_template(
-        "dashboard.html", widgets=layout, edit_mode=True, catalog=WIDGET_CATALOG
+        "dashboard.html", widgets=widgets, edit_mode=True, catalog=WIDGET_CATALOG
     )
 
 

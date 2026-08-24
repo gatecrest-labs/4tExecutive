@@ -61,6 +61,22 @@ def test_edit_page_lists_catalog(client, tmp_path, monkeypatch):
     assert b"Hygiene Score" in response.data
 
 
+def test_edit_page_shows_widget_labels_for_saved_layout(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+
+    response = client.get("/dashboard/edit")
+
+    assert response.status_code == 200
+    assert response.data.count(b"Hygiene Score") >= 2
+
+
 def test_post_layout_saves_and_can_be_read_back(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
