@@ -30,6 +30,10 @@ def create_app(testing: bool = False) -> Flask:
 
     flask_app.register_blueprint(dashboard_bp)
 
+    from app.routes.admin_routes import bp as admin_bp
+
+    flask_app.register_blueprint(admin_bp)
+
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
     if not testing:

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin — Sources</h1>
+<table>
+  <thead><tr><th>ID</th><th>System</th><th>Name</th><th>Enabled</th><th></th></tr></thead>
+  <tbody>
+    {% for source in sources %}
+    <tr>
+      <td>{{ source.id }}</td>
+      <td>{{ source.system }}</td>
+      <td>{{ source.name }}</td>
+      <td>{{ source.enabled }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.refresh_source_route', source_id=source.id) }}" style="display:inline">
+          <button type="submit">Refresh now</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.delete_source_route', source_id=source.id) }}" style="display:inline">
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add source</h2>
+<form method="post" action="{{ url_for('admin.add_source_route') }}">
+  <label>ID <input name="id"></label>
+  <label>System <input name="system" placeholder="4thealth / 4tlog"></label>
+  <label>Name <input name="name"></label>
+  <label>Base URL <input name="base_url"></label>
+  <label>Token <input name="token" type="password"></label>
+  <label>Poll interval (minutes) <input name="poll_interval_minutes" value="15"></label>
+  <button type="submit">Add</button>
+</form>
+{% endblock %}
