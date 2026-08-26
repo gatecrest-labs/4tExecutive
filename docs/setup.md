@@ -60,22 +60,19 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
 You can also run without TLS locally by leaving `certs/` empty — the app
 will serve over plain HTTP and secure cookies stay off.
 
-**Self-signed cert + repeated logins or "CSRF session token is missing"?**
-`SESSION_COOKIE_SECURE` auto-enables whenever `certs/` is populated, which
-means the session cookie is only sent back over a connection the browser
-fully trusts as HTTPS. Browsers can be inconsistent about persisting a
-`Secure` cookie against a self-signed certificate — symptoms are getting
-logged out on every navigation, or a "CSRF session token is missing" error
-on form submits (the session cookie didn't come back at all, so there was
-nothing to check the form's CSRF token against). Two fixes:
-
-- Quick, local-only: set `COOKIE_SECURE=false` in `.env`. TLS stays on for
-  the connection itself; this just stops requiring the browser to trust the
-  cert before it'll send the cookie back.
-- Better, if you'll be testing this for a while: use
-  [mkcert](https://github.com/FiloSottile/mkcert) instead of `openssl` to
-  generate the cert — it installs a local CA your browser actually trusts,
-  so there's no self-signed warning and no cookie flakiness to work around.
+**Repeated logins, or "CSRF session token is missing"?** If you're also
+running another Flask app (e.g. `4thealth-plus`) at the same hostname —
+`localhost:8100` alongside 4tExecutive's `localhost:8200`, say — check for
+a session cookie name collision first. Browser cookies are scoped by
+domain and path, **not port** (RFC 6265), and Flask's default session
+cookie name is `session` for every app unless overridden. Two unrelated
+Flask apps both using the default name at the same hostname will silently
+overwrite each other's session cookie on every navigation between them,
+which reads as random logouts and CSRF failures with no obvious cause.
+4tExecutive sets `SESSION_COOKIE_NAME = "4texecutive_session"`
+specifically to make this impossible (`app/__init__.py`) — if you're
+still seeing it, check whether whatever else you're running shares a
+cookie name with something else in the mix.
 
 ### Tests and linting
 

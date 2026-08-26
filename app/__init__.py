@@ -55,6 +55,13 @@ def create_app(
             )
         flask_app.secret_key = secret_key
 
+    # Flask's default cookie name ("session") collides with any other Flask
+    # app on the same hostname — cookies are scoped by domain+path, not
+    # port, so e.g. 4thealth-plus on :8100 and 4tExecutive on :8200, both at
+    # "localhost", would silently overwrite each other's session cookie in
+    # the browser. A unique name makes that impossible regardless of what
+    # else is running alongside it.
+    flask_app.config["SESSION_COOKIE_NAME"] = "4texecutive_session"
     flask_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     flask_app.config["SESSION_COOKIE_SECURE"] = _resolve_cookie_secure()
     flask_app.testing = testing

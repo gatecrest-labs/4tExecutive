@@ -41,6 +41,19 @@ def test_create_app_sets_samesite_cookie_config(monkeypatch, tmp_config_dir, tmp
     assert flask_app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
 
 
+def test_create_app_uses_a_non_default_cookie_name(monkeypatch, tmp_config_dir, tmp_path):
+    import app.metrics_db as metrics_db_module
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(metrics_db_module, "DB_PATH", tmp_path / "metrics.db")
+
+    flask_app = create_app(testing=True)
+
+    # Not Flask's default "session" — that name collides with any other
+    # Flask app sharing the same hostname (cookies aren't port-scoped).
+    assert flask_app.config["SESSION_COOKIE_NAME"] == "4texecutive_session"
+
+
 def test_resolve_cookie_secure_true_when_certs_present_and_auto(monkeypatch, tmp_path):
     cert = tmp_path / "cert.pem"
     key = tmp_path / "key.pem"
