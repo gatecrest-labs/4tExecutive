@@ -2,14 +2,25 @@
 {% block content %}
 <h1>Admin — Sources</h1>
 <table>
-  <thead><tr><th>ID</th><th>System</th><th>Name</th><th>Enabled</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>System</th><th>Name</th><th>Enabled</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>
     {% for source in sources %}
+    {% set status = statuses.get(source.id, {}) %}
     <tr>
       <td>{{ source.id }}</td>
       <td>{{ source.system }}</td>
       <td>{{ source.name }}</td>
       <td>{{ source.enabled }}</td>
+      <td>{{ "Unverified (self-signed)" if not source.get("verify_tls", True) else "Verified" }}</td>
+      <td>
+        {% if status.status == "ok" %}
+          <span class="status-ok" title="Last successful poll: {{ status.at }}">● OK</span>
+        {% elif status.status == "failed" %}
+          <span class="status-failed" title="{{ status.at }}">● Failed — {{ status.detail }}</span>
+        {% else %}
+          <span class="status-pending">● Not yet polled</span>
+        {% endif %}
+      </td>
       <td>
         <form method="post" action="{{ url_for('admin.refresh_source_route', source_id=source.id) }}" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -35,6 +46,14 @@
   <label>Base URL <input name="base_url"></label>
   <label>Token <input name="token" type="password"></label>
   <label>Poll interval (minutes) <input name="poll_interval_minutes" value="15"></label>
+  <label>
+    <input type="checkbox" name="skip_tls_verify">
+    This source uses a self-signed/internal certificate (skip TLS verification)
+  </label>
+  <p class="text-muted" style="font-size:.85rem">
+    Only check this for a source you trust on a private network — it disables
+    protection against a machine-in-the-middle impersonating the source.
+  </p>
   <button type="submit">Add</button>
 </form>
 {% endblock %}

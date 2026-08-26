@@ -100,14 +100,37 @@ Once the endpoint exists and you have a token for it:
    - **Token** — the bearer token that instance issued. Stored encrypted
      at rest (see [SECURITY.md](../SECURITY.md)).
    - **Poll interval (minutes)** — how often to collect.
+   - **"This source uses a self-signed/internal certificate"** — check
+     this if the source's TLS cert isn't from a CA your system trusts
+     (the common case for a local/internal instance). Unchecked, the
+     collector validates the cert normally and a self-signed source will
+     fail every poll with an SSL error. Checking it disables certificate
+     verification for *that source only* — see the security note below.
 3. Submit. The collector picks it up on its next scheduler tick (checks
    every minute whether any source is due).
 4. Use **Refresh now** in Admin to trigger an out-of-band poll instead of
    waiting for the interval — useful for confirming the connection works
    before walking away.
 
-A poll failure (network error, non-200, bad JSON) is logged and skipped;
-it never crashes the scheduler or blocks other sources from polling.
+The Admin sources table shows a per-source **status marker** — OK (with
+the last successful poll time), Failed (with the actual error, e.g. an
+SSL failure or HTTP status), or Not yet polled. A poll failure (network
+error, non-200, bad JSON) is logged and skipped; it never crashes the
+scheduler or blocks other sources from polling.
+
+### Self-signed certificates
+
+Checking "self-signed/internal certificate" on a source disables TLS
+certificate verification for requests to it (`verify=False` on the
+collector's HTTP client) — the connection is still encrypted, but
+4tExecutive can no longer confirm it's actually talking to the system you
+configured rather than something impersonating it on the network. That's
+an acceptable trade-off for a source you control on a private network, and
+is why it's opt-in per source rather than a global setting. For anything
+beyond local testing, prefer giving the source a certificate from a CA
+4tExecutive already trusts (or point `REQUESTS_CA_BUNDLE` at that CA's
+cert when starting the container — `requests` honors that env var
+automatically) over leaving verification off indefinitely.
 
 ## 4tAnalyst — not yet supported
 

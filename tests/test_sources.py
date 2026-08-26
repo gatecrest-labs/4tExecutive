@@ -31,8 +31,17 @@ def test_add_source_then_list_and_get():
     )
     assert added["poll_interval_minutes"] == 15
     assert added["enabled"] is True
+    assert added["verify_tls"] is True
     assert [s["id"] for s in list_sources()] == ["4thealth-east"]
     assert get_source("4thealth-east")["name"] == "East DC"
+
+
+def test_add_source_can_disable_tls_verification():
+    added = add_source(
+        id="self-signed", system="4thealth", name="Lab", base_url="https://a",
+        token="t", verify_tls=False,
+    )
+    assert added["verify_tls"] is False
 
 
 def test_add_source_rejects_duplicate_id():

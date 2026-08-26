@@ -8,7 +8,15 @@ from datetime import UTC, datetime, timedelta
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.metrics_db import get_last_polled, set_last_polled, write_snapshot
+from app.metrics_db import (
+    clear_poll_error,
+    get_last_polled,
+    get_latest,
+    get_poll_error,
+    set_last_polled,
+    set_poll_error,
+    write_snapshot,
+)
 from app.sources import get_source, list_sources, source_headers
 
 logger = logging.getLogger(__name__)
@@ -33,30 +41,61 @@ def _mark_polled(source_id: str, attempted_at: str) -> None:
         logger.exception("Failed to record last_polled for source %s", source_id)
 
 
+def _fail(source_id: str, attempted_at: str, error: str) -> bool:
+    logger.warning("Poll failed for source %s: %s", source_id, error)
+    _mark_polled(source_id, attempted_at)
+    try:
+        set_poll_error(source_id, error, attempted_at)
+    except Exception:
+        logger.exception("Failed to record poll error for source %s", source_id)
+    return False
+
+
 def poll_source(source: dict) -> bool:
     attempted_at = _now_iso()
     try:
         url = f"{source['base_url']}/external/api/executive/summary"
         response = requests.get(
-            url, headers=source_headers(source), timeout=REQUEST_TIMEOUT_SECONDS
+            url,
+            headers=source_headers(source),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            # Off only for sources explicitly marked as self-signed/internal
+            # certs in Admin — see the verify_tls note in app/sources.py.
+            verify=source.get("verify_tls", True),
         )
         if response.status_code != 200:
-            logger.warning("Poll failed for source %s: HTTP %s", source["id"], response.status_code)
-            _mark_polled(source["id"], attempted_at)
-            return False
+            return _fail(source["id"], attempted_at, f"HTTP {response.status_code}")
 
         write_snapshot(source["id"], "summary", response.json(), attempted_at)
         set_last_polled(source["id"], attempted_at)
+        try:
+            clear_poll_error(source["id"])
+        except Exception:
+            logger.exception("Failed to clear poll error for source %s", source["id"])
     except requests.RequestException as exc:
-        logger.warning("Poll failed for source %s: %s", source["id"], exc)
-        _mark_polled(source["id"], attempted_at)
-        return False
+        return _fail(source["id"], attempted_at, str(exc) or type(exc).__name__)
     except Exception as exc:
-        logger.warning("Poll failed for source %s: %s", source["id"], exc)
-        _mark_polled(source["id"], attempted_at)
-        return False
+        return _fail(source["id"], attempted_at, str(exc) or type(exc).__name__)
 
     return True
+
+
+def poll_status(source_id: str) -> dict:
+    """Best-known state of a source's polling for display in Admin.
+
+    Distinct from `_is_due`: this describes outcome (ok/failed/pending) for a
+    human, not scheduling. `error` is only set to a live poll_errors row —
+    it's cleared on the first success after a failure, so a "failed" status
+    always reflects the most recent attempt, never a stale one that was
+    later superseded by a success.
+    """
+    error = get_poll_error(source_id)
+    if error is not None:
+        return {"status": "failed", "detail": error["error"], "at": error["attempted_at"]}
+    latest = get_latest(source_id, "summary")
+    if latest is not None:
+        return {"status": "ok", "detail": None, "at": latest["collected_at"]}
+    return {"status": "pending", "detail": None, "at": None}
 
 
 def _is_due(source: dict) -> bool:

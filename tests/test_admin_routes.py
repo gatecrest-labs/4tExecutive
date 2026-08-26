@@ -60,6 +60,40 @@ def test_add_source_via_post(client, tmp_path, monkeypatch):
 
     assert response.status_code == 302
     assert sources_module.get_source("4tlog-main")["name"] == "Main FAZ"
+    assert sources_module.get_source("4tlog-main")["verify_tls"] is True
+
+
+def test_add_source_with_skip_tls_verify_checkbox_disables_verification(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+
+    response = client.post(
+        "/admin/sources",
+        data={
+            "id": "self-signed",
+            "system": "4thealth",
+            "name": "Self-signed instance",
+            "base_url": "https://internal.example",
+            "token": "secret",
+            "poll_interval_minutes": "15",
+            "skip_tls_verify": "on",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert sources_module.get_source("self-signed")["verify_tls"] is False
+
+
+def test_admin_sources_page_shows_status_marker(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    sources_module.add_source(
+        id="s1", system="4thealth", name="A", base_url="https://a", token="t"
+    )
+
+    response = client.get("/admin/sources")
+
+    assert response.status_code == 200
+    assert b"Not yet polled" in response.data
 
 
 def test_delete_source(client, tmp_path, monkeypatch):

@@ -36,6 +36,14 @@ filesystem access, no SSH, and no elevated privileges.
   gitignored — never commit real values from these paths.
 - Admin routes reject any source `base_url` that isn't `https://`, so bearer
   tokens are never sent in cleartext.
+- Outbound TLS certificate verification is **on by default** per source and
+  is opt-out, never opt-in: a source is only unverified if its admin
+  explicitly checks "self-signed/internal certificate" in Admin (stored as
+  `verify_tls: false` on that source's record, `app/sources.py`). Disabling
+  it removes protection against a machine-in-the-middle impersonating that
+  specific source; it never affects other sources. Prefer trusting the
+  source's actual CA (e.g. `REQUESTS_CA_BUNDLE`) over leaving this off
+  long-term — see [docs/integrations.md](docs/integrations.md).
 - All state-changing routes (login, Admin source CRUD) require a CSRF token
   (`flask-wtf`'s `CSRFProtect`, wired in `app/__init__.py`); every form in
   `app/templates/` includes one, and a `csrf-token` `<meta>` tag in

@@ -2,13 +2,16 @@ import pytest
 
 from app import metrics_db
 from app.metrics_db import (
+    clear_poll_error,
     get_history,
     get_last_polled,
     get_latest,
     get_layout,
+    get_poll_error,
     init_db,
     save_layout,
     set_last_polled,
+    set_poll_error,
     write_snapshot,
 )
 
@@ -60,3 +63,26 @@ def test_save_layout_overwrites_previous():
     save_layout("alice", [{"type": "a"}])
     save_layout("alice", [{"type": "b"}])
     assert get_layout("alice") == [{"type": "b"}]
+
+
+def test_poll_error_roundtrip():
+    assert get_poll_error("s1") is None
+    set_poll_error("s1", "connection refused", "2026-08-24T10:00:00Z")
+    assert get_poll_error("s1") == {"error": "connection refused", "attempted_at": "2026-08-24T10:00:00Z"}
+
+
+def test_set_poll_error_overwrites_previous():
+    set_poll_error("s1", "first error", "2026-08-24T10:00:00Z")
+    set_poll_error("s1", "second error", "2026-08-24T10:15:00Z")
+    assert get_poll_error("s1") == {"error": "second error", "attempted_at": "2026-08-24T10:15:00Z"}
+
+
+def test_clear_poll_error_removes_it():
+    set_poll_error("s1", "connection refused", "2026-08-24T10:00:00Z")
+    clear_poll_error("s1")
+    assert get_poll_error("s1") is None
+
+
+def test_clear_poll_error_is_a_noop_when_none_exists():
+    clear_poll_error("s1")  # should not raise
+    assert get_poll_error("s1") is None

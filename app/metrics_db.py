@@ -36,6 +36,15 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS poll_errors (
+                source_id TEXT PRIMARY KEY,
+                error TEXT NOT NULL,
+                attempted_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS layouts (
                 username TEXT PRIMARY KEY,
                 widgets_json TEXT NOT NULL
@@ -92,6 +101,29 @@ def get_last_polled(source_id: str) -> str | None:
             "SELECT collected_at FROM last_polled WHERE source_id = ?", (source_id,)
         ).fetchone()
     return row[0] if row else None
+
+
+def set_poll_error(source_id: str, error: str, attempted_at: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO poll_errors (source_id, error, attempted_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(source_id) DO UPDATE SET error = excluded.error, "
+            "attempted_at = excluded.attempted_at",
+            (source_id, error, attempted_at),
+        )
+
+
+def clear_poll_error(source_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM poll_errors WHERE source_id = ?", (source_id,))
+
+
+def get_poll_error(source_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT error, attempted_at FROM poll_errors WHERE source_id = ?", (source_id,)
+        ).fetchone()
+    return {"error": row[0], "attempted_at": row[1]} if row else None
 
 
 def get_layout(username: str) -> list[dict]:

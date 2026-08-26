@@ -4,17 +4,25 @@ from __future__ import annotations
 
 from flask import Blueprint, redirect, render_template, request, url_for
 
-from app.collector import poll_now
+from app.collector import poll_now, poll_status
 from app.decorators import tab_required
 from app.sources import add_source, delete_source, list_sources
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
+def _render_sources(error: str | None = None):
+    sources = list_sources()
+    statuses = {source["id"]: poll_status(source["id"]) for source in sources}
+    return render_template(
+        "admin/sources.html", sources=sources, statuses=statuses, error=error
+    )
+
+
 @bp.route("/sources", methods=["GET"])
 @tab_required("admin")
 def sources():
-    return render_template("admin/sources.html", sources=list_sources())
+    return _render_sources()
 
 
 @bp.route("/sources", methods=["POST"])
@@ -22,20 +30,14 @@ def sources():
 def add_source_route():
     base_url = request.form["base_url"]
     if not base_url.startswith("https://"):
-        return render_template(
-            "admin/sources.html",
-            sources=list_sources(),
-            error="Base URL must start with https:// (bearer token would otherwise be sent in cleartext).",
+        return _render_sources(
+            error="Base URL must start with https:// (bearer token would otherwise be sent in cleartext)."
         )
 
     try:
         poll_interval_minutes = int(request.form.get("poll_interval_minutes", 15))
     except ValueError:
-        return render_template(
-            "admin/sources.html",
-            sources=list_sources(),
-            error="Poll interval (minutes) must be a whole number.",
-        )
+        return _render_sources(error="Poll interval (minutes) must be a whole number.")
 
     try:
         add_source(
@@ -45,9 +47,10 @@ def add_source_route():
             base_url=base_url,
             token=request.form["token"],
             poll_interval_minutes=poll_interval_minutes,
+            verify_tls=request.form.get("skip_tls_verify") != "on",
         )
     except ValueError as exc:
-        return render_template("admin/sources.html", sources=list_sources(), error=str(exc))
+        return _render_sources(error=str(exc))
 
     return redirect(url_for("admin.sources"))
 

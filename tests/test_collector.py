@@ -5,9 +5,9 @@ import requests
 
 import app.sources as sources_module
 from app import metrics_db
-from app.collector import poll_all, poll_now, poll_source
+from app.collector import poll_all, poll_now, poll_source, poll_status
 from app.crypto import encrypt_token
-from app.metrics_db import get_last_polled, get_latest, init_db
+from app.metrics_db import get_last_polled, get_latest, get_poll_error, init_db
 
 
 @pytest.fixture(autouse=True)
@@ -266,6 +266,80 @@ def test_poll_source_records_last_polled_on_connection_error():
         poll_source(source)
 
     assert get_last_polled("4thealth-east") is not None
+
+
+def test_poll_source_verifies_tls_by_default():
+    source = _source()
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"hygiene_score": 92}
+        poll_source(source)
+
+    assert mock_get.call_args.kwargs["verify"] is True
+
+
+def test_poll_source_skips_tls_verification_when_source_opts_out():
+    source = _source(verify_tls=False)
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"hygiene_score": 92}
+        poll_source(source)
+
+    assert mock_get.call_args.kwargs["verify"] is False
+
+
+def test_poll_source_records_poll_error_on_failure():
+    source = _source()
+
+    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
+        poll_source(source)
+
+    error = get_poll_error("4thealth-east")
+    assert error is not None
+    assert "down" in error["error"]
+
+
+def test_poll_source_clears_poll_error_after_a_later_success():
+    source = _source()
+
+    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
+        poll_source(source)
+    assert get_poll_error("4thealth-east") is not None
+
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"hygiene_score": 92}
+        poll_source(source)
+
+    assert get_poll_error("4thealth-east") is None
+
+
+def test_poll_status_pending_when_never_polled():
+    assert poll_status("never-polled") == {"status": "pending", "detail": None, "at": None}
+
+
+def test_poll_status_ok_after_success():
+    source = _source()
+    with patch("app.collector.requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"hygiene_score": 92}
+        poll_source(source)
+
+    status = poll_status("4thealth-east")
+    assert status["status"] == "ok"
+    assert status["at"] is not None
+
+
+def test_poll_status_failed_after_failure():
+    source = _source()
+    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
+        poll_source(source)
+
+    status = poll_status("4thealth-east")
+    assert status["status"] == "failed"
+    assert "down" in status["detail"]
 
 
 def test_poll_all_does_not_retry_down_source_before_interval_elapses():

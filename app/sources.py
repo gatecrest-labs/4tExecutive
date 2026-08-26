@@ -36,6 +36,7 @@ def add_source(
     token: str,
     poll_interval_minutes: int = 15,
     enabled: bool = True,
+    verify_tls: bool = True,
 ) -> dict:
     sources = _load()
     if any(s["id"] == id for s in sources):
@@ -48,6 +49,11 @@ def add_source(
         "token": encrypt_token(token),
         "poll_interval_minutes": poll_interval_minutes,
         "enabled": enabled,
+        # Off only for self-signed/internal certs the collector's HTTP client
+        # can't otherwise validate. Disables MITM protection for this source
+        # — see SECURITY.md before turning it off for anything beyond local
+        # testing.
+        "verify_tls": verify_tls,
     }
     sources.append(record)
     _save(sources)
