@@ -6,35 +6,46 @@ from flask import Blueprint, jsonify, render_template, request, session
 
 from app.decorators import tab_required
 from app.layouts import get_layout, save_layout
-from app.widgets import WIDGET_CATALOG, get_widget_value
+from app.sources import get_source
+from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value
 
 bp = Blueprint("dashboard", __name__)
+
+
+def _source_name(source_instance: str) -> str:
+    source = get_source(source_instance)
+    return source["name"] if source else source_instance
+
+
+def _annotate(widget: dict, *, with_data: bool) -> dict:
+    entry = WIDGET_CATALOG[widget["type"]]
+    annotated = {
+        **widget,
+        "label": entry["label"],
+        "source_name": _source_name(widget["source_instance"]),
+    }
+    if with_data:
+        annotated["data"] = get_widget_value(widget)
+    return annotated
 
 
 @bp.route("/")
 @tab_required("dashboard")
 def index():
-    layout = get_layout(session["username"])
-    widgets = []
-    for widget in layout:
-        entry = WIDGET_CATALOG[widget["type"]]
-        widgets.append(
-            {
-                **widget,
-                "label": entry["label"],
-                "data": get_widget_value(widget),
-            }
-        )
+    # Falls back to one widget per catalog entry x enabled matching source
+    # when the user hasn't saved a custom layout, so the dashboard shows
+    # everything currently configured instead of being blank by default —
+    # see app/widgets.py:default_layout.
+    layout = get_layout(session["username"]) or default_layout()
+    widgets = [_annotate(widget, with_data=True) for widget in layout]
     return render_template("dashboard.html", widgets=widgets, edit_mode=False, catalog=None)
 
 
 @bp.route("/dashboard/edit")
 @tab_required("dashboard")
 def edit():
-    layout = get_layout(session["username"])
-    widgets = [
-        {**widget, "label": WIDGET_CATALOG[widget["type"]]["label"]} for widget in layout
-    ]
+    layout = get_layout(session["username"]) or default_layout()
+    widgets = [_annotate(widget, with_data=False) for widget in layout]
     return render_template(
         "dashboard.html", widgets=widgets, edit_mode=True, catalog=WIDGET_CATALOG
     )

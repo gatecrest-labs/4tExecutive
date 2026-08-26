@@ -1,7 +1,15 @@
 import json
 
+import pytest
+
 import app.groups as groups_module
+import app.sources as sources_module
 from app import metrics_db
+
+
+@pytest.fixture(autouse=True)
+def tmp_sources_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(sources_module, "SOURCES_PATH", tmp_path / "sources.json")
 
 
 def _login(client, username="alice"):
@@ -49,6 +57,52 @@ def test_dashboard_renders_saved_widgets(client, tmp_path, monkeypatch):
     assert response.status_code == 200
     assert b"Hygiene Score" in response.data
     assert b"88" in response.data
+
+
+def test_dashboard_falls_back_to_default_layout_when_none_saved(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    sources_module.add_source(
+        id="s1", system="4thealth", name="East DC", base_url="https://a", token="t"
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 88}, "2026-08-24T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Hygiene Score" in response.data
+    assert b"East DC" in response.data
+    assert b"88" in response.data
+
+
+def test_dashboard_empty_when_no_saved_layout_and_no_sources(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"No data yet" not in response.data  # no widgets rendered at all
+
+
+def test_dashboard_prefers_saved_layout_over_default(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    sources_module.add_source(
+        id="s1", system="4thealth", name="East DC", base_url="https://a", token="t"
+    )
+    from app.layouts import save_layout
+
+    # Saved layout only picks one catalog entry, even though the default
+    # would include every 4thealth widget for this source.
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+
+    response = client.get("/")
+
+    assert response.data.count(b'class="widget widget-') == 1
 
 
 def test_edit_page_lists_catalog(client, tmp_path, monkeypatch):

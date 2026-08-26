@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.metrics_db import get_latest
+from app.sources import list_sources
 
 WIDGET_CATALOG: dict[str, dict] = {
     "4thealth.hygiene_score": {
@@ -55,6 +56,26 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "2x2",
     },
 }
+
+
+def default_layout() -> list[dict]:
+    """Auto-generated fallback shown when a user has no saved layout: one
+    widget per catalog entry x each enabled source whose system matches, so
+    the dashboard shows everything currently configured instead of being
+    blank until someone builds a real per-user editor."""
+    widgets = []
+    for widget_type, entry in WIDGET_CATALOG.items():
+        for source in list_sources():
+            if source.get("system") == entry["source_system"] and source.get("enabled", True):
+                widgets.append(
+                    {
+                        "type": widget_type,
+                        "source_instance": source["id"],
+                        "size": entry["default_size"],
+                        "date_range": "30d",
+                    }
+                )
+    return widgets
 
 
 def get_widget_value(widget_instance: dict) -> dict | None:

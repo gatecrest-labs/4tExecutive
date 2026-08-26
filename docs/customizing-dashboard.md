@@ -83,6 +83,25 @@ out.
 Each user's widget arrangement is stored per-username via
 [`app/layouts.py`](../app/layouts.py) (`get_layout`/`save_layout`), backed by
 `metrics.db`. A layout is an ordered list of placed widget instances, each
-referencing a `WIDGET_CATALOG` type, a `source_instance` id, a title, a size,
-and a date range. "Edit Dashboard" mode lets a user add/remove/resize
-widgets from the catalog; view mode renders the saved layout read-only.
+referencing a `WIDGET_CATALOG` type, a `source_instance` id, a size, and a
+date range.
+
+**There is currently no UI to build one.** `POST /dashboard/layout`
+(`app/routes/dashboard_routes.py`) accepts a layout and saves it, and Edit
+mode (`/dashboard/edit`) renders whatever's saved, but nothing in
+`app/templates/dashboard.html` actually calls that route yet — no
+add/remove/resize controls exist. Until that's built, the only way to set
+a specific layout is `save_layout(username, widgets)` directly (e.g. via
+`docker compose exec app python -c "..."` in a running deployment).
+
+**Default layout, when nothing's saved**: `default_layout()`
+(`app/widgets.py`) generates one widget per `WIDGET_CATALOG` entry × each
+*enabled* source whose `system` matches that entry's `source_system` — so
+a user with no saved layout sees everything currently configured instead
+of a blank dashboard. `app/routes/dashboard_routes.py`'s `index()`/`edit()`
+use this as a fallback (`get_layout(username) or default_layout()`); a
+user with any saved layout, even a single widget, always sees exactly
+that instead — the default only fills in for someone who's saved nothing
+at all. Each widget's card shows the source instance's `name` next to its
+label so widgets from different instances of the same system stay
+distinguishable.

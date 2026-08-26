@@ -2,14 +2,16 @@
 
 import pytest
 
+import app.sources as sources_module
 from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
-from app.widgets import WIDGET_CATALOG, get_widget_value
+from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value
 
 
 @pytest.fixture(autouse=True)
 def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr(metrics_db, "DB_PATH", tmp_path / "metrics.db")
+    monkeypatch.setattr(sources_module, "SOURCES_PATH", tmp_path / "sources.json")
     init_db()
 
 
@@ -40,3 +42,41 @@ def test_get_widget_value_raises_for_unknown_widget_type():
     widget = {"type": "not.a.real.widget", "source_instance": "x"}
     with pytest.raises(KeyError):
         get_widget_value(widget)
+
+
+def test_default_layout_empty_when_no_sources():
+    assert default_layout() == []
+
+
+def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+
+    layout = default_layout()
+
+    types = {w["type"] for w in layout}
+    assert types == {t for t, e in WIDGET_CATALOG.items() if e["source_system"] == "4thealth"}
+    assert all(w["source_instance"] == "4th-1" for w in layout)
+
+
+def test_default_layout_skips_disabled_sources():
+    sources_module.add_source(
+        id="4th-1", system="4thealth", name="A", base_url="https://a", token="t", enabled=False
+    )
+
+    assert default_layout() == []
+
+
+def test_default_layout_covers_multiple_source_instances():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    sources_module.add_source(id="4th-2", system="4thealth", name="B", base_url="https://b", token="t")
+
+    layout = default_layout()
+
+    instances = {w["source_instance"] for w in layout}
+    assert instances == {"4th-1", "4th-2"}
+
+
+def test_default_layout_ignores_source_whose_system_has_no_widgets():
+    sources_module.add_source(id="x", system="unmapped-system", name="A", base_url="https://a", token="t")
+
+    assert default_layout() == []
