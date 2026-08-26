@@ -25,6 +25,22 @@ def test_create_rejects_duplicate_username():
         manage_users.create_user("alice", "other")
 
 
+def test_set_password_updates_hash():
+    manage_users.create_user("alice", "secret")
+    manage_users.set_password("alice", "new-secret")
+
+    users = read_json(manage_users.USERS_PATH)["users"]
+    import bcrypt
+
+    assert bcrypt.checkpw(b"new-secret", users[0]["password_hash"].encode())
+    assert not bcrypt.checkpw(b"secret", users[0]["password_hash"].encode())
+
+
+def test_set_password_rejects_unknown_username():
+    with pytest.raises(ValueError):
+        manage_users.set_password("nobody", "new-secret")
+
+
 def test_delete_removes_user():
     manage_users.create_user("alice", "secret")
     manage_users.delete_user("alice")

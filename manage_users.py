@@ -29,6 +29,16 @@ def create_user(username: str, password: str) -> None:
     _save(users)
 
 
+def set_password(username: str, password: str) -> None:
+    users = _load()
+    for user in users:
+        if user["username"] == username:
+            user["password_hash"] = hash_password(password)
+            _save(users)
+            return
+    raise ValueError(f"no such user: {username}")
+
+
 def delete_user(username: str) -> None:
     users = [u for u in _load() if u["username"] != username]
     _save(users)
@@ -46,6 +56,10 @@ def main() -> None:
     create_parser.add_argument("username")
     create_parser.add_argument("password")
 
+    set_password_parser = sub.add_parser("set-password")
+    set_password_parser.add_argument("username")
+    set_password_parser.add_argument("password")
+
     delete_parser = sub.add_parser("delete")
     delete_parser.add_argument("username")
 
@@ -56,6 +70,9 @@ def main() -> None:
     if args.command == "create":
         create_user(args.username, args.password)
         print(f"Created user: {args.username}")
+    elif args.command == "set-password":
+        set_password(args.username, args.password)
+        print(f"Updated password for user: {args.username}")
     elif args.command == "delete":
         delete_user(args.username)
         print(f"Deleted user: {args.username}")

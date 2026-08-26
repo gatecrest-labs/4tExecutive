@@ -111,6 +111,20 @@ just run it inside the container:
 docker compose exec app python manage_users.py create admin yourpassword
 ```
 
+### Managing users
+
+```bash
+python manage_users.py create <username> <password>       # add a user
+python manage_users.py set-password <username> <password>  # change a password
+python manage_users.py delete <username>                    # remove a user
+python manage_users.py list                                  # list usernames
+```
+
+Prefix with `docker compose exec app` to run these inside a running
+container instead of locally. There's no "forgot password" flow — an admin
+with shell access to the app (locally or via `docker compose exec`) runs
+`set-password` for the affected user.
+
 ## Production notes
 
 - Set a real `SECRET_KEY` — never reuse the `.env.example` placeholder or a

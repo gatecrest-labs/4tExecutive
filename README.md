@@ -104,7 +104,7 @@ config/
   *.json               Gitignored, real config (users, groups, sources, ...)
 docs/                  Setup, architecture, integrations, and customization docs
 tests/                 pytest suite, one file per module
-manage_users.py        CLI for creating/deleting/listing users
+manage_users.py        CLI for creating/deleting/listing users, changing passwords
 seed_demo_data.py       Fake data for visual QA
 wsgi.py                 gunicorn entrypoint
 ```
