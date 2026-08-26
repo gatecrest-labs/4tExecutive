@@ -37,6 +37,11 @@ Widgets come from a predefined catalog in [`app/widgets.py`](../app/widgets.py)
 
 ## Adding a source system
 
+If you just need to connect a running `4thealth`/`4tlog` instance that
+already exposes the executive-summary endpoint, see
+[integrations.md](integrations.md) instead — this section is about adding
+support for a source *system type* that isn't wired up at all yet.
+
 A "source system" (e.g. `4thealth`, `4tlog`) is just a string tag on source
 registry entries and widget catalog entries — there's no central list to
 register it in. To add a new one:

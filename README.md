@@ -65,6 +65,12 @@ python seed_demo_data.py
 This writes fake sources, users, and metrics snapshots directly (no network
 calls). It prints a demo username/password you can log in with.
 
+## Connecting a source system
+
+See [docs/integrations.md](docs/integrations.md) for the API contract a
+source (`4thealth`, `4tlog`, ...) must expose, which fields each existing
+widget expects, and how to register a running instance in Admin.
+
 ## Customizing the dashboard
 
 See [docs/customizing-dashboard.md](docs/customizing-dashboard.md) for how to
@@ -96,7 +102,7 @@ app/
 config/
   examples/            Tracked *.example.json templates
   *.json               Gitignored, real config (users, groups, sources, ...)
-docs/                  Setup, architecture, and customization docs
+docs/                  Setup, architecture, integrations, and customization docs
 tests/                 pytest suite, one file per module
 manage_users.py        CLI for creating/deleting/listing users
 seed_demo_data.py       Fake data for visual QA
