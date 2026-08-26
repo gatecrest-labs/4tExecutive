@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -16,7 +16,7 @@ REQUEST_TIMEOUT_SECONDS = 10
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _mark_polled(source_id: str, attempted_at: str) -> None:
@@ -63,9 +63,9 @@ def _is_due(source: dict) -> bool:
     last_polled = get_last_polled(source["id"])
     if last_polled is None:
         return True
-    last_dt = datetime.strptime(last_polled, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    last_dt = datetime.strptime(last_polled, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     interval = timedelta(minutes=source["poll_interval_minutes"])
-    return datetime.now(timezone.utc) >= last_dt + interval
+    return datetime.now(UTC) >= last_dt + interval
 
 
 def poll_all() -> None:

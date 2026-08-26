@@ -1,12 +1,11 @@
 import app.groups as groups_module
-import app.metrics_db as metrics_db
 import app.sources as sources_module
 import manage_users
-from app.config_paths import bootstrap_config
+from app import metrics_db
 from app.layouts import get_layout
-from app.metrics_db import get_latest, init_db
+from app.metrics_db import init_db
 from app.widgets import WIDGET_CATALOG
-from seed_demo_data import DEMO_PASSWORD, DEMO_USERNAME, seed
+from seed_demo_data import DEMO_USERNAME, seed
 
 
 def _patch_all_paths(tmp_path, monkeypatch):

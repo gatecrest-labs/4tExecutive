@@ -1,6 +1,6 @@
 import pytest
 
-import app.metrics_db as metrics_db
+from app import metrics_db
 from app.layouts import get_layout, save_layout
 from app.metrics_db import init_db
 

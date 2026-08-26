@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from flask import Blueprint, redirect, render_template, request, session, url_for
 
+from app import limiter
 from app.auth import verify_password
 
 bp = Blueprint("auth", __name__)
 
 
 @bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     error = None
     if request.method == "POST":

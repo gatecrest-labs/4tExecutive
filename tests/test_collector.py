@@ -3,9 +3,10 @@ from unittest.mock import patch
 import pytest
 import requests
 
-import app.metrics_db as metrics_db
 import app.sources as sources_module
+from app import metrics_db
 from app.collector import poll_all, poll_now, poll_source
+from app.crypto import encrypt_token
 from app.metrics_db import get_last_polled, get_latest, init_db
 
 
@@ -22,7 +23,7 @@ def _source(**overrides):
         "system": "4thealth",
         "name": "East DC",
         "base_url": "https://4thealth-east.internal:8100",
-        "token": "secret",
+        "token": encrypt_token("secret"),
         "poll_interval_minutes": 15,
         "enabled": True,
     }
@@ -126,9 +127,11 @@ def test_poll_now_returns_false_for_unknown_source():
 def test_poll_source_logs_warning_on_request_exception():
     source = _source()
 
-    with patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")):
-        with patch("app.collector.logger") as mock_logger:
-            result = poll_source(source)
+    with (
+        patch("app.collector.requests.get", side_effect=requests.ConnectionError("down")),
+        patch("app.collector.logger") as mock_logger,
+    ):
+        result = poll_source(source)
 
     assert result is False
     mock_logger.warning.assert_called_once()
@@ -172,7 +175,7 @@ def test_poll_source_catches_write_snapshot_error_and_returns_false():
     with patch("app.collector.requests.get") as mock_get:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = response_json
-        with patch("app.collector.write_snapshot", side_effect=IOError("DB error")):
+        with patch("app.collector.write_snapshot", side_effect=OSError("DB error")):
             result = poll_source(source)
 
     assert result is False
@@ -185,7 +188,7 @@ def test_poll_source_catches_set_last_polled_error_and_returns_false():
     with patch("app.collector.requests.get") as mock_get:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = response_json
-        with patch("app.collector.set_last_polled", side_effect=IOError("DB error")):
+        with patch("app.collector.set_last_polled", side_effect=OSError("DB error")):
             result = poll_source(source)
 
     assert result is False

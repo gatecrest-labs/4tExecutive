@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 
 from flask import Flask
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf import CSRFProtect
 
 from app.config_paths import bootstrap_config
 from app.groups import user_has_tab
@@ -13,6 +16,13 @@ from app.groups import user_has_tab
 # .env.example to .env without changing it, we must refuse to boot rather than
 # sign session cookies with a publicly known key.
 _PLACEHOLDER_SECRET_KEY = "change-me-to-a-random-value"
+
+csrf = CSRFProtect()
+# In-memory storage, scoped to this process — matches the Dockerfile's
+# single-gunicorn-worker deployment. Scaling to multiple workers/instances
+# needs a shared backend (e.g. Redis) or each process enforces its own
+# independent limit.
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _resolve_cookie_secure() -> bool:
@@ -25,7 +35,12 @@ def _resolve_cookie_secure() -> bool:
     return setting == "true" or (setting == "auto" and ssl_active)
 
 
-def create_app(testing: bool = False) -> Flask:
+def create_app(
+    testing: bool = False,
+    *,
+    enable_csrf: bool | None = None,
+    enable_rate_limit: bool | None = None,
+) -> Flask:
     flask_app = Flask(__name__)
 
     if testing:
@@ -43,6 +58,17 @@ def create_app(testing: bool = False) -> Flask:
     flask_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     flask_app.config["SESSION_COOKIE_SECURE"] = _resolve_cookie_secure()
     flask_app.testing = testing
+
+    # Both default to disabled in test mode so route tests can POST without a
+    # CSRF token and aren't throttled by shared per-process rate-limit state.
+    # tests/test_csrf.py and tests/test_rate_limit.py pass the enable_* kwargs
+    # to exercise the real behavior against a throwaway app instance instead.
+    flask_app.config["WTF_CSRF_ENABLED"] = (not testing) if enable_csrf is None else enable_csrf
+    flask_app.config["RATELIMIT_ENABLED"] = (
+        (not testing) if enable_rate_limit is None else enable_rate_limit
+    )
+    csrf.init_app(flask_app)
+    limiter.init_app(flask_app)
 
     if not testing:
         bootstrap_config()

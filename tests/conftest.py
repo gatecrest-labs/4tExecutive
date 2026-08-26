@@ -4,9 +4,8 @@ import bcrypt
 import pytest
 
 import app.auth as auth_module
-import app.config_paths as config_paths
 import app.groups as groups_module
-from app import create_app
+from app import config_paths, create_app
 
 
 @pytest.fixture

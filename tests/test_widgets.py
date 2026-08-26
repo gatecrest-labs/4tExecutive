@@ -2,7 +2,7 @@
 
 import pytest
 
-import app.metrics_db as metrics_db
+from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
 from app.widgets import WIDGET_CATALOG, get_widget_value
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.atomic_io import atomic_write_json, read_json
 from app.config_paths import CONFIG_DIR
+from app.crypto import decrypt_token, encrypt_token
 
 SOURCES_PATH = CONFIG_DIR / "sources.json"
 
@@ -44,7 +45,7 @@ def add_source(
         "system": system,
         "name": name,
         "base_url": base_url,
-        "token": token,
+        "token": encrypt_token(token),
         "poll_interval_minutes": poll_interval_minutes,
         "enabled": enabled,
     }
@@ -54,6 +55,8 @@ def add_source(
 
 
 def update_source(source_id: str, **fields) -> dict | None:
+    if "token" in fields:
+        fields["token"] = encrypt_token(fields["token"])
     sources = _load()
     for source in sources:
         if source["id"] == source_id:
@@ -69,4 +72,4 @@ def delete_source(source_id: str) -> None:
 
 
 def source_headers(source: dict) -> dict:
-    return {"Authorization": f"Bearer {source['token']}"}
+    return {"Authorization": f"Bearer {decrypt_token(source['token'])}"}

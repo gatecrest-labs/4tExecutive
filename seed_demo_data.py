@@ -11,7 +11,7 @@ systems required.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import app.groups as groups_module
 import app.sources as sources_module
@@ -58,7 +58,7 @@ _SIZE_CYCLE = ["1x1", "2x1", "2x2"]
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def seed() -> None:

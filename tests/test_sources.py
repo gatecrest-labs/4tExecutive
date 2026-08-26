@@ -1,6 +1,7 @@
 import pytest
 
 import app.sources as sources_module
+from app.crypto import encrypt_token
 from app.sources import (
     add_source,
     delete_source,
@@ -58,5 +59,24 @@ def test_delete_source_removes_it():
 
 
 def test_source_headers_builds_bearer_header():
-    source = {"token": "abc123"}
+    source = {"token": encrypt_token("abc123")}
     assert source_headers(source) == {"Authorization": "Bearer abc123"}
+
+
+def test_add_source_stores_token_encrypted_not_plaintext():
+    add_source(id="s1", system="4thealth", name="A", base_url="https://a", token="super-secret")
+
+    stored = get_source("s1")
+    assert stored["token"] != "super-secret"
+    assert "super-secret" not in stored["token"]
+    assert source_headers(stored) == {"Authorization": "Bearer super-secret"}
+
+
+def test_update_source_encrypts_new_token():
+    add_source(id="s1", system="4thealth", name="A", base_url="https://a", token="old-token")
+
+    update_source("s1", token="new-token")
+
+    stored = get_source("s1")
+    assert "new-token" not in stored["token"]
+    assert source_headers(stored) == {"Authorization": "Bearer new-token"}

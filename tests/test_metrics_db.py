@@ -1,6 +1,6 @@
 import pytest
 
-import app.metrics_db as metrics_db
+from app import metrics_db
 from app.metrics_db import (
     get_history,
     get_last_polled,

@@ -1,7 +1,7 @@
 import json
 
 import app.groups as groups_module
-import app.metrics_db as metrics_db
+from app import metrics_db
 
 
 def _login(client, username="alice"):

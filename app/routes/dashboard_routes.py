@@ -43,6 +43,9 @@ def edit():
 @bp.route("/dashboard/layout", methods=["POST"])
 @tab_required("dashboard")
 def update_layout():
+    # CSRF-protected like every other POST route (see app/__init__.py). No JS
+    # calls this yet; when the edit-mode UI is wired up, send the token from
+    # the `csrf-token` <meta> tag in base.html as an `X-CSRFToken` header.
     widgets = request.get_json(silent=True)
     if widgets is None:
         return jsonify({"error": "expected a JSON array of widgets"}), 400
