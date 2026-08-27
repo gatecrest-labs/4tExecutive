@@ -6,7 +6,13 @@ import app.auth as auth_module
 def test_login_page_renders(client):
     response = client.get("/login")
     assert response.status_code == 200
-    assert b"Login" in response.data
+    assert b"4tExecutive" in response.data
+
+
+def test_login_page_uses_auth_card_layout(client):
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert b'class="auth-card"' in response.data
 
 
 def test_login_with_valid_credentials_redirects_and_sets_session(client, tmp_path, monkeypatch):
