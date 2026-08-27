@@ -56,6 +56,34 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `adom_count`                  | ADOMs Configured                |
 | `version_breakdown`           | FortiOS Versions (table)       |
 
+**`4thealth-plus` AI usage fields** (optional — omit entirely if AI isn't
+enabled on that instance):
+
+| JSON key                        | Widget          |
+|-----------------------------------|------------------|
+| `ai_enabled`                      | (controls whether the AI Usage widget appears at all) |
+| `ai_connection_count_24h`         | AI Usage (24h)   |
+| `ai_estimated_cost_24h_usd`       | AI Usage (24h)   |
+
+`ai_usage_24h` as read by the widget catalog is not a single top-level key —
+`get_widget_value()` looks up `ai_usage_24h`, so on the 4thealth-plus side
+these three fields should be nested under one `ai_usage_24h` object:
+
+```json
+{
+  "ai_enabled": true,
+  "ai_usage_24h": {
+    "ai_connection_count_24h": 340,
+    "ai_estimated_cost_24h_usd": 4.10
+  }
+}
+```
+
+`ai_enabled` stays top-level (checked directly by `default_layout()`, not
+through the widget catalog) while the widget's own display value
+(`ai_usage_24h`) carries the connection count and cost together as one
+object, the same way `version_breakdown` carries a dict instead of a scalar.
+
 **`4tlog`**:
 
 | JSON key            | Widget                  |

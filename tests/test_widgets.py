@@ -54,7 +54,11 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
     layout = default_layout()
 
     types = {w["type"] for w in layout}
-    assert types == {t for t, e in WIDGET_CATALOG.items() if e["source_system"] == "4thealth"}
+    expected = {
+        t for t, e in WIDGET_CATALOG.items()
+        if e["source_system"] == "4thealth" and t != "4thealth.ai_usage_24h"
+    }
+    assert types == expected
     assert all(w["source_instance"] == "4th-1" for w in layout)
 
 
@@ -127,3 +131,40 @@ def test_get_widget_value_for_version_breakdown_returns_dict_value():
         "value": {"7.4.5": 62, "7.2.9": 41, "7.0.14": 25},
         "collected_at": "2026-08-27T10:00:00Z",
     }
+
+
+def test_catalog_contains_ai_usage_widget():
+    assert "4thealth.ai_usage_24h" in WIDGET_CATALOG
+    assert WIDGET_CATALOG["4thealth.ai_usage_24h"]["field"] == "ai_usage_24h"
+
+
+def test_default_layout_excludes_ai_widget_when_ai_not_enabled():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot("4th-1", "summary", {"hygiene_score": 92}, "2026-08-27T10:00:00Z")
+
+    layout = default_layout()
+
+    assert "4thealth.ai_usage_24h" not in {w["type"] for w in layout}
+
+
+def test_default_layout_excludes_ai_widget_when_source_never_polled():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+
+    layout = default_layout()
+
+    assert "4thealth.ai_usage_24h" not in {w["type"] for w in layout}
+
+
+def test_default_layout_includes_ai_widget_when_ai_enabled_true():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot(
+        "4th-1", "summary",
+        {"ai_enabled": True, "ai_connection_count_24h": 340, "ai_estimated_cost_24h_usd": 4.10},
+        "2026-08-27T10:00:00Z",
+    )
+
+    layout = default_layout()
+
+    ai_widgets = [w for w in layout if w["type"] == "4thealth.ai_usage_24h"]
+    assert len(ai_widgets) == 1
+    assert ai_widgets[0]["source_instance"] == "4th-1"
