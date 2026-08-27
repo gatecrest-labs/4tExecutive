@@ -5,7 +5,7 @@ import pytest
 import app.sources as sources_module
 from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
-from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value
+from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value, _downsample
 
 
 @pytest.fixture(autouse=True)
@@ -200,3 +200,38 @@ def test_get_widget_value_for_host_cpu_percent():
     widget = {"type": "4texecutive.cpu_percent", "source_instance": "_self"}
 
     assert get_widget_value(widget) == {"value": 34.5, "collected_at": "2026-08-27T10:00:00Z"}
+
+
+def test_downsample_returns_points_unchanged_when_under_limit():
+    points = [("t0", 1), ("t1", 2), ("t2", 3)]
+    assert _downsample(points, max_points=80) == points
+
+
+def test_downsample_returns_points_unchanged_when_exactly_at_limit():
+    points = [(f"t{i}", i) for i in range(80)]
+    assert _downsample(points, max_points=80) == points
+
+
+def test_downsample_buckets_to_max_points_when_over_limit():
+    points = [(f"t{i}", i) for i in range(100)]
+    result = _downsample(points, max_points=10)
+    assert len(result) == 10
+
+
+def test_downsample_first_bucket_averages_and_rounds_int_inputs():
+    points = [(f"t{i}", i) for i in range(100)]
+    result = _downsample(points, max_points=10)
+    assert result[0][0] == "t0"
+    assert result[0][1] == round(sum(range(10)) / 10)
+
+
+def test_downsample_keeps_float_precision_for_float_inputs():
+    points = [(f"t{i}", i + 0.5) for i in range(20)]
+    result = _downsample(points, max_points=5)
+    assert len(result) == 5
+    first_chunk_avg = sum(i + 0.5 for i in range(4)) / 4
+    assert result[0][1] == round(first_chunk_avg, 2)
+
+
+def test_downsample_empty_list_returns_empty_list():
+    assert _downsample([], max_points=80) == []
