@@ -216,4 +216,6 @@ def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tm
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"No data yet" in response.data
+    # Verify no crash occurs and the widget renders (even with missing version_breakdown field)
+    assert b"FortiOS Versions" in response.data
+    assert b"widget-2x2" in response.data

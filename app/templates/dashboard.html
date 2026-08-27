@@ -14,8 +14,8 @@
     <div class="widget widget-{{ widget.size|default('1x1') }}">
       <h3>{{ widget.label }}</h3>
       <p class="widget-source">{{ widget.source_name }}</p>
-      {% if widget.data and widget.data.value %}
-        {% if widget.type == "4thealth.version_breakdown" %}
+      {% if widget.data %}
+        {% if widget.type == "4thealth.version_breakdown" and widget.data.value %}
           <table class="widget-table">
             {% for version, count in widget.data.value.items() %}
             <tr><td>{{ version }}</td><td>{{ count }}</td></tr>
