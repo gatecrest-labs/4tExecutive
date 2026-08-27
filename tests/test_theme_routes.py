@@ -22,3 +22,25 @@ def test_post_theme_rejects_invalid_value(client):
         "/theme", data={"theme": "purple", "next": "/login"}, follow_redirects=True
     )
     assert b'data-theme="light"' in response.data
+
+
+def test_post_theme_rejects_absolute_url_redirect(client):
+    response = client.post(
+        "/theme",
+        data={"theme": "dark", "next": "https://evil.example"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    location = response.headers.get("Location")
+    assert location == "/"
+
+
+def test_post_theme_rejects_protocol_relative_url_redirect(client):
+    response = client.post(
+        "/theme",
+        data={"theme": "dark", "next": "//evil.example"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    location = response.headers.get("Location")
+    assert location == "/"
