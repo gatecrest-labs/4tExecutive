@@ -41,6 +41,27 @@ WIDGET_CATALOG: dict[str, dict] = {
         "field": "firewall_online_count",
         "default_size": "1x1",
     },
+    "4thealth.firewall_managed_count": {
+        "label": "Firewalls Managed",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "firewall_managed_count",
+        "default_size": "1x1",
+    },
+    "4thealth.rule_count_total": {
+        "label": "Total Rules",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "rule_count_total",
+        "default_size": "1x1",
+    },
+    "4thealth.adom_count": {
+        "label": "ADOMs Configured",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "adom_count",
+        "default_size": "1x1",
+    },
     "4tlog.faz_health": {
         "label": "FortiAnalyzer Health",
         "source_system": "4tlog",

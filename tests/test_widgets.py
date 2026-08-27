@@ -80,3 +80,33 @@ def test_default_layout_ignores_source_whose_system_has_no_widgets():
     sources_module.add_source(id="x", system="unmapped-system", name="A", base_url="https://a", token="t")
 
     assert default_layout() == []
+
+
+def test_catalog_contains_firewall_rule_adom_widgets():
+    assert "4thealth.firewall_managed_count" in WIDGET_CATALOG
+    assert "4thealth.rule_count_total" in WIDGET_CATALOG
+    assert "4thealth.adom_count" in WIDGET_CATALOG
+    assert WIDGET_CATALOG["4thealth.firewall_managed_count"]["source_system"] == "4thealth"
+
+
+def test_get_widget_value_for_firewall_managed_count():
+    write_snapshot("4thealth-east", "summary", {"firewall_managed_count": 128}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.firewall_managed_count", "source_instance": "4thealth-east"}
+
+    result = get_widget_value(widget)
+
+    assert result == {"value": 128, "collected_at": "2026-08-27T10:00:00Z"}
+
+
+def test_get_widget_value_for_rule_count_total():
+    write_snapshot("4thealth-east", "summary", {"rule_count_total": 14200}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "4thealth-east"}
+
+    assert get_widget_value(widget) == {"value": 14200, "collected_at": "2026-08-27T10:00:00Z"}
+
+
+def test_get_widget_value_for_adom_count():
+    write_snapshot("4thealth-east", "summary", {"adom_count": 9}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.adom_count", "source_instance": "4thealth-east"}
+
+    assert get_widget_value(widget) == {"value": 9, "collected_at": "2026-08-27T10:00:00Z"}

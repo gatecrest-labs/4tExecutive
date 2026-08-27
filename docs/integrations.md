@@ -51,6 +51,9 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `pending_config_diff_count`   | Pending Config Diffs           |
 | `last_backup_status`          | Last Backup Status             |
 | `firewall_online_count`       | Firewalls Online               |
+| `firewall_managed_count`      | Firewalls Managed              |
+| `rule_count_total`            | Total Rules                    |
+| `adom_count`                  | ADOMs Configured                |
 
 **`4tlog`**:
 
