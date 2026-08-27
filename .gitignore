@@ -12,3 +12,4 @@ __pycache__/
 .ruff_cache/
 graphify-out/
 docs/superpowers/
+.superpowers/
