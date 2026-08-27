@@ -76,6 +76,27 @@ WIDGET_CATALOG: dict[str, dict] = {
         "field": "ai_usage_24h",
         "default_size": "2x1",
     },
+    "4texecutive.cpu_percent": {
+        "label": "Host CPU",
+        "source_system": "4texecutive",
+        "metric_type": "summary",
+        "field": "cpu_percent",
+        "default_size": "1x1",
+    },
+    "4texecutive.memory_percent": {
+        "label": "Host Memory",
+        "source_system": "4texecutive",
+        "metric_type": "summary",
+        "field": "memory_percent",
+        "default_size": "1x1",
+    },
+    "4texecutive.disk_percent": {
+        "label": "Host Disk",
+        "source_system": "4texecutive",
+        "metric_type": "summary",
+        "field": "disk_percent",
+        "default_size": "1x1",
+    },
     "4tlog.faz_health": {
         "label": "FortiAnalyzer Health",
         "source_system": "4tlog",
@@ -124,6 +145,19 @@ def default_layout() -> list[dict]:
                     "date_range": "30d",
                 }
             )
+
+    for widget_type, entry in WIDGET_CATALOG.items():
+        if entry["source_system"] != "4texecutive":
+            continue
+        widgets.append(
+            {
+                "type": widget_type,
+                "source_instance": "_self",
+                "size": entry["default_size"],
+                "date_range": "30d",
+            }
+        )
+
     return widgets
 
 

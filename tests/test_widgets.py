@@ -44,8 +44,10 @@ def test_get_widget_value_raises_for_unknown_widget_type():
         get_widget_value(widget)
 
 
-def test_default_layout_empty_when_no_sources():
-    assert default_layout() == []
+def test_default_layout_only_host_widgets_when_no_sources():
+    layout = default_layout()
+    types = {w["type"] for w in layout}
+    assert types == {"4texecutive.cpu_percent", "4texecutive.memory_percent", "4texecutive.disk_percent"}
 
 
 def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
@@ -53,13 +55,14 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
 
     layout = default_layout()
 
-    types = {w["type"] for w in layout}
+    fourthealth_widgets = [w for w in layout if w["type"].startswith("4thealth.")]
+    types = {w["type"] for w in fourthealth_widgets}
     expected = {
         t for t, e in WIDGET_CATALOG.items()
         if e["source_system"] == "4thealth" and t != "4thealth.ai_usage_24h"
     }
     assert types == expected
-    assert all(w["source_instance"] == "4th-1" for w in layout)
+    assert all(w["source_instance"] == "4th-1" for w in fourthealth_widgets)
 
 
 def test_default_layout_skips_disabled_sources():
@@ -67,7 +70,9 @@ def test_default_layout_skips_disabled_sources():
         id="4th-1", system="4thealth", name="A", base_url="https://a", token="t", enabled=False
     )
 
-    assert default_layout() == []
+    layout = default_layout()
+    types = {w["type"] for w in layout}
+    assert types == {"4texecutive.cpu_percent", "4texecutive.memory_percent", "4texecutive.disk_percent"}
 
 
 def test_default_layout_covers_multiple_source_instances():
@@ -76,14 +81,16 @@ def test_default_layout_covers_multiple_source_instances():
 
     layout = default_layout()
 
-    instances = {w["source_instance"] for w in layout}
+    instances = {w["source_instance"] for w in layout if w["type"].startswith("4thealth.")}
     assert instances == {"4th-1", "4th-2"}
 
 
 def test_default_layout_ignores_source_whose_system_has_no_widgets():
     sources_module.add_source(id="x", system="unmapped-system", name="A", base_url="https://a", token="t")
 
-    assert default_layout() == []
+    layout = default_layout()
+    types = {w["type"] for w in layout}
+    assert types == {"4texecutive.cpu_percent", "4texecutive.memory_percent", "4texecutive.disk_percent"}
 
 
 def test_catalog_contains_firewall_rule_adom_widgets():
@@ -168,3 +175,28 @@ def test_default_layout_includes_ai_widget_when_ai_enabled_true():
     ai_widgets = [w for w in layout if w["type"] == "4thealth.ai_usage_24h"]
     assert len(ai_widgets) == 1
     assert ai_widgets[0]["source_instance"] == "4th-1"
+
+
+def test_catalog_contains_host_metric_widgets():
+    assert "4texecutive.cpu_percent" in WIDGET_CATALOG
+    assert "4texecutive.memory_percent" in WIDGET_CATALOG
+    assert "4texecutive.disk_percent" in WIDGET_CATALOG
+    assert WIDGET_CATALOG["4texecutive.cpu_percent"]["source_system"] == "4texecutive"
+
+
+def test_default_layout_always_includes_host_metric_widgets_even_with_no_sources():
+    layout = default_layout()
+
+    types = {w["type"] for w in layout}
+    assert "4texecutive.cpu_percent" in types
+    assert "4texecutive.memory_percent" in types
+    assert "4texecutive.disk_percent" in types
+    host_widgets = [w for w in layout if w["type"].startswith("4texecutive.")]
+    assert all(w["source_instance"] == "_self" for w in host_widgets)
+
+
+def test_get_widget_value_for_host_cpu_percent():
+    write_snapshot("_self", "summary", {"cpu_percent": 34.5, "memory_percent": 61.2, "disk_percent": 47.0}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4texecutive.cpu_percent", "source_instance": "_self"}
+
+    assert get_widget_value(widget) == {"value": 34.5, "collected_at": "2026-08-27T10:00:00Z"}

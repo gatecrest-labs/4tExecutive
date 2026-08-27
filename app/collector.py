@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+import psutil
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -80,6 +81,23 @@ def poll_source(source: dict) -> bool:
     return True
 
 
+def poll_self() -> None:
+    """Sample this host's own CPU/memory/disk and cache it as a synthetic
+    "_self" source — never registered in sources.json/Admin, always present.
+    Unlike poll_source, there's no network call and nothing to fail against,
+    so no poll_errors/last_polled bookkeeping is needed here."""
+    write_snapshot(
+        "_self",
+        "summary",
+        {
+            "cpu_percent": psutil.cpu_percent(),
+            "memory_percent": psutil.virtual_memory().percent,
+            "disk_percent": psutil.disk_usage("/").percent,
+        },
+        _now_iso(),
+    )
+
+
 def poll_status(source_id: str) -> dict:
     """Best-known state of a source's polling for display in Admin.
 
@@ -132,5 +150,6 @@ def poll_now(source_id: str) -> bool:
 def init_scheduler(app) -> None:
     scheduler = BackgroundScheduler()
     scheduler.add_job(poll_all, "interval", minutes=1, id="poll_all")
+    scheduler.add_job(poll_self, "interval", minutes=1, id="poll_self")
     scheduler.start()
     app.extensions["scheduler"] = scheduler
