@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, abort, redirect, render_template, request, session, url_for
 
+from app.auth import create_user, delete_user, get_user
 from app.collector import poll_now, poll_status
 from app.decorators import tab_required
+from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.sources import add_source, delete_source, list_sources
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -67,3 +69,53 @@ def delete_source_route(source_id):
 def refresh_source_route(source_id):
     poll_now(source_id)
     return redirect(url_for("admin.sources"))
+
+
+def _render_users(error: str | None = None):
+    from app.atomic_io import read_json
+    from app.auth import USERS_PATH
+
+    usernames = [u["username"] for u in read_json(USERS_PATH, default={"users": []})["users"]]
+    users = [{"username": name, "groups": get_user_groups(name)} for name in usernames]
+    return render_template(
+        "admin/users.html",
+        users=users,
+        all_groups=list_group_names(),
+        error=error,
+    )
+
+
+@bp.route("/users", methods=["GET"])
+@tab_required("admin")
+def users():
+    return _render_users()
+
+
+@bp.route("/users", methods=["POST"])
+@tab_required("admin")
+def add_user_route():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    groups = request.form.getlist("groups")
+
+    if not username:
+        return _render_users(error="Username is required.")
+    if get_user(username) is not None:
+        return _render_users(error=f"user already exists: {username}")
+
+    try:
+        create_user(username, password)
+    except ValueError as exc:
+        return _render_users(error=str(exc))
+
+    set_user_groups(username, groups)
+    return redirect(url_for("admin.users"))
+
+
+@bp.route("/users/<username>/delete", methods=["POST"])
+@tab_required("admin")
+def delete_user_route(username):
+    if username == session["username"]:
+        abort(400)
+    delete_user(username)
+    return redirect(url_for("admin.users"))
