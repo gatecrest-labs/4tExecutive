@@ -15,7 +15,15 @@
       <h3>{{ widget.label }}</h3>
       <p class="widget-source">{{ widget.source_name }}</p>
       {% if widget.data %}
-        <p class="widget-value">{{ widget.data.value }}</p>
+        {% if widget.type == "4thealth.version_breakdown" and widget.data.value %}
+          <table class="widget-table">
+            {% for version, count in widget.data.value.items() %}
+            <tr><td>{{ version }}</td><td>{{ count }}</td></tr>
+            {% endfor %}
+          </table>
+        {% else %}
+          <p class="widget-value">{{ widget.data.value }}</p>
+        {% endif %}
         <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
       {% else %}
         <p class="widget-empty">No data yet</p>

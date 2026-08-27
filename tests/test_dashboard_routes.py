@@ -178,3 +178,24 @@ def test_post_layout_rejects_list_of_non_dict_items(client, tmp_path, monkeypatc
     response = client.post("/dashboard/layout", json=["not-a-widget"])
 
     assert response.status_code == 400
+
+
+def test_dashboard_renders_version_breakdown_as_table(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.version_breakdown", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"version_breakdown": {"7.4.5": 62, "7.2.9": 41}}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"widget-table" in response.data
+    assert b"7.4.5" in response.data
+    assert b"62" in response.data

@@ -54,6 +54,7 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `firewall_managed_count`      | Firewalls Managed              |
 | `rule_count_total`            | Total Rules                    |
 | `adom_count`                  | ADOMs Configured                |
+| `version_breakdown`           | FortiOS Versions (table)       |
 
 **`4tlog`**:
 
@@ -73,6 +74,10 @@ Example response body from a 4thealth instance:
   "firewall_online_count": 14
 }
 ```
+
+`version_breakdown`'s value is a JSON object mapping version string to
+firewall count, e.g. `{"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}` — every
+other field above is a scalar; this is the one exception.
 
 See [customizing-dashboard.md](customizing-dashboard.md) for adding a new
 widget/field beyond this initial catalog.

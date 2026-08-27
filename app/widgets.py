@@ -62,6 +62,13 @@ WIDGET_CATALOG: dict[str, dict] = {
         "field": "adom_count",
         "default_size": "1x1",
     },
+    "4thealth.version_breakdown": {
+        "label": "FortiOS Versions",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "version_breakdown",
+        "default_size": "2x2",
+    },
     "4tlog.faz_health": {
         "label": "FortiAnalyzer Health",
         "source_system": "4tlog",

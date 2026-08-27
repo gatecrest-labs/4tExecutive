@@ -110,3 +110,20 @@ def test_get_widget_value_for_adom_count():
     widget = {"type": "4thealth.adom_count", "source_instance": "4thealth-east"}
 
     assert get_widget_value(widget) == {"value": 9, "collected_at": "2026-08-27T10:00:00Z"}
+
+
+def test_get_widget_value_for_version_breakdown_returns_dict_value():
+    write_snapshot(
+        "4thealth-east",
+        "summary",
+        {"version_breakdown": {"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}},
+        "2026-08-27T10:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "4thealth-east"}
+
+    result = get_widget_value(widget)
+
+    assert result == {
+        "value": {"7.4.5": 62, "7.2.9": 41, "7.0.14": 25},
+        "collected_at": "2026-08-27T10:00:00Z",
+    }
