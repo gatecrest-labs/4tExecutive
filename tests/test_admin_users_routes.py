@@ -77,6 +77,19 @@ def test_delete_user(client, tmp_path, monkeypatch):
     assert auth_module.get_user("dave") is None
 
 
+def test_delete_user_clears_group_membership(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    monkeypatch.setattr(auth_module, "USERS_PATH", tmp_path / "users.json")
+    auth_module.create_user("dave", "secret")
+    groups_module.set_user_groups("dave", ["administrators", "executives"])
+    assert groups_module.get_user_groups("dave") != []
+
+    response = client.post("/admin/users/dave/delete", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert groups_module.get_user_groups("dave") == []
+
+
 def test_delete_user_refuses_to_delete_self(client, tmp_path, monkeypatch):
     _login_as_admin(client, tmp_path, monkeypatch, username="carol")
     monkeypatch.setattr(auth_module, "USERS_PATH", tmp_path / "users.json")

@@ -118,4 +118,5 @@ def delete_user_route(username):
     if username == session["username"]:
         abort(400)
     delete_user(username)
+    set_user_groups(username, [])
     return redirect(url_for("admin.users"))

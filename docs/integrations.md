@@ -27,9 +27,11 @@ Authorization: Bearer <token>
   snapshot — there's no field allowlist or transformation in between. Any
   other status code is treated as a failed poll (logged, retried next
   interval, doesn't affect other sources).
-- The body must be a **flat JSON object** whose top-level keys match
-  whatever the widget catalog (`app/widgets.py`) expects to read for that
-  `system` — see the per-system field lists below. Extra keys are ignored;
+- The body must be a **JSON object** whose top-level keys match whatever
+  the widget catalog (`app/widgets.py`) expects to read for that `system`
+  — see the per-system field lists below. Most fields are scalars, but
+  `version_breakdown` and `ai_usage_24h` are two exceptions whose values
+  are nested JSON objects rather than scalars. Extra keys are ignored;
   a missing key just means that widget shows "No data yet"
   (`get_widget_value()` returns `None` for a missing field).
 
@@ -59,15 +61,15 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 **`4thealth-plus` AI usage fields** (optional — omit entirely if AI isn't
 enabled on that instance):
 
-| JSON key                        | Widget          |
-|-----------------------------------|------------------|
-| `ai_enabled`                      | (controls whether the AI Usage widget appears at all) |
-| `ai_connection_count_24h`         | AI Usage (24h)   |
-| `ai_estimated_cost_24h_usd`       | AI Usage (24h)   |
+| JSON key       | Widget          |
+|-----------------|------------------|
+| `ai_enabled`    | (controls whether the AI Usage widget appears at all) |
+| `ai_usage_24h`  | AI Usage (24h)   |
 
-`ai_usage_24h` as read by the widget catalog is not a single top-level key —
-`get_widget_value()` looks up `ai_usage_24h`, so on the 4thealth-plus side
-these three fields should be nested under one `ai_usage_24h` object:
+`ai_enabled` and `ai_usage_24h` are both top-level keys, but `ai_usage_24h`
+itself is a nested object, not a scalar: `get_widget_value()` looks up the
+`ai_usage_24h` key and returns its value as-is, so the connection count and
+cost must be nested under it as sub-fields:
 
 ```json
 {
@@ -104,8 +106,9 @@ Example response body from a 4thealth instance:
 ```
 
 `version_breakdown`'s value is a JSON object mapping version string to
-firewall count, e.g. `{"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}` — every
-other field above is a scalar; this is the one exception.
+firewall count, e.g. `{"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}`. Along with
+`ai_usage_24h`, these are the only two fields whose value is a nested
+object; every other field above is a scalar.
 
 See [customizing-dashboard.md](customizing-dashboard.md) for adding a new
 widget/field beyond this initial catalog.
