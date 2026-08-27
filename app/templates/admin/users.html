@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin — Users</h1>
+<p><a href="{{ url_for('admin.sources') }}">Manage sources →</a></p>
+<table>
+  <thead><tr><th>Username</th><th>Groups</th><th></th></tr></thead>
+  <tbody>
+    {% for user in users %}
+    <tr>
+      <td>{{ user.username }}</td>
+      <td>{{ user.groups | join(', ') }}</td>
+      <td>
+        {% if user.username != session.username %}
+        <form method="post" action="{{ url_for('admin.delete_user_route', username=user.username) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn-secondary" type="submit">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add user</h2>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="{{ url_for('admin.add_user_route') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-field">
+    <label for="username">Username</label>
+    <input class="form-input" id="username" name="username">
+  </div>
+  <div class="form-field">
+    <label for="password">Password</label>
+    <input class="form-input" id="password" type="password" name="password">
+  </div>
+  <div class="form-field">
+    <label>Groups</label>
+    {% for group in all_groups %}
+      <label><input type="checkbox" name="groups" value="{{ group }}"> {{ group }}</label>
+    {% endfor %}
+  </div>
+  <button class="btn-primary" type="submit">Add</button>
+</form>
+{% endblock %}

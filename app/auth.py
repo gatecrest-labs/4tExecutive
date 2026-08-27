@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bcrypt
 
-from app.atomic_io import read_json
+from app.atomic_io import atomic_write_json, read_json
 from app.config_paths import CONFIG_DIR
 
 USERS_PATH = CONFIG_DIR / "users.json"
@@ -36,3 +36,20 @@ def verify_password(username: str, password: str) -> bool:
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _save_users(users: list[dict]) -> None:
+    atomic_write_json(USERS_PATH, {"users": users})
+
+
+def create_user(username: str, password: str) -> None:
+    users = _load_users()
+    if any(user["username"] == username for user in users):
+        raise ValueError(f"user already exists: {username}")
+    users.append({"username": username, "password_hash": hash_password(password)})
+    _save_users(users)
+
+
+def delete_user(username: str) -> None:
+    users = [user for user in _load_users() if user["username"] != username]
+    _save_users(users)

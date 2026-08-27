@@ -75,14 +75,15 @@ def test_dashboard_falls_back_to_default_layout_when_none_saved(client, tmp_path
     assert b"88" in response.data
 
 
-def test_dashboard_empty_when_no_saved_layout_and_no_sources(client, tmp_path, monkeypatch):
+def test_dashboard_shows_only_host_widgets_when_no_saved_layout_and_no_sources(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"No data yet" not in response.data  # no widgets rendered at all
+    assert response.data.count(b'class="widget widget-') == 3
+    assert b"Host CPU" in response.data
 
 
 def test_dashboard_prefers_saved_layout_over_default(client, tmp_path, monkeypatch):
@@ -178,3 +179,92 @@ def test_post_layout_rejects_list_of_non_dict_items(client, tmp_path, monkeypatc
     response = client.post("/dashboard/layout", json=["not-a-widget"])
 
     assert response.status_code == 400
+
+
+def test_dashboard_renders_version_breakdown_as_table(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.version_breakdown", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"version_breakdown": {"7.4.5": 62, "7.2.9": 41}}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"widget-table" in response.data
+    assert b"7.4.5" in response.data
+    assert b"62" in response.data
+
+
+def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.version_breakdown", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    # Snapshot without version_breakdown field - only has hygiene_score
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 92}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    # Verify no crash occurs and the widget renders (even with missing version_breakdown field)
+    assert b"FortiOS Versions" in response.data
+    assert b"widget-2x2" in response.data
+    assert b"No data yet" in response.data
+    assert b">None<" not in response.data
+
+
+def test_dashboard_renders_ai_usage_widget_as_table_not_raw_dict(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.ai_usage_24h", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1",
+        "summary",
+        {"ai_usage_24h": {"ai_connection_count_24h": 340, "ai_estimated_cost_24h_usd": 4.1}},
+        "2026-08-27T10:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    # No raw Python dict repr rendered as plain text outside table markup.
+    assert b"{&#39;ai_connection_count_24h&#39;" not in response.data
+    assert b"{'ai_connection_count_24h'" not in response.data
+    assert b"widget-table" in response.data
+    assert b"340" in response.data
+
+
+def test_dashboard_renders_zero_value_instead_of_no_data(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.pending_config_diffs", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"pending_config_diff_count": 0}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"No data yet" not in response.data
+    assert b">0<" in response.data

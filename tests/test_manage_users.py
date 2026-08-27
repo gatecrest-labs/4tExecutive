@@ -1,12 +1,13 @@
-
 import pytest
 
+import app.auth as auth_module
 import manage_users
 from app.atomic_io import read_json
 
 
 @pytest.fixture(autouse=True)
 def tmp_users(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth_module, "USERS_PATH", tmp_path / "users.json")
     monkeypatch.setattr(manage_users, "USERS_PATH", tmp_path / "users.json")
 
 

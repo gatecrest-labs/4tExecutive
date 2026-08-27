@@ -7,10 +7,7 @@ import argparse
 import sys
 
 from app.atomic_io import atomic_write_json, read_json
-from app.auth import hash_password
-from app.config_paths import CONFIG_DIR
-
-USERS_PATH = CONFIG_DIR / "users.json"
+from app.auth import USERS_PATH, create_user, delete_user, hash_password
 
 
 def _load() -> list[dict]:
@@ -21,14 +18,6 @@ def _save(users: list[dict]) -> None:
     atomic_write_json(USERS_PATH, {"users": users})
 
 
-def create_user(username: str, password: str) -> None:
-    users = _load()
-    if any(u["username"] == username for u in users):
-        raise ValueError(f"user already exists: {username}")
-    users.append({"username": username, "password_hash": hash_password(password)})
-    _save(users)
-
-
 def set_password(username: str, password: str) -> None:
     users = _load()
     for user in users:
@@ -37,11 +26,6 @@ def set_password(username: str, password: str) -> None:
             _save(users)
             return
     raise ValueError(f"no such user: {username}")
-
-
-def delete_user(username: str) -> None:
-    users = [u for u in _load() if u["username"] != username]
-    _save(users)
 
 
 def list_users() -> list[str]:

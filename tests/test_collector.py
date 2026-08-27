@@ -357,3 +357,21 @@ def test_poll_all_does_not_retry_down_source_before_interval_elapses():
         poll_all()
 
     mock_get_second.assert_not_called()
+
+
+def test_poll_self_writes_a_synthetic_self_snapshot():
+    from app.collector import poll_self
+
+    with (
+        patch("app.collector.psutil.cpu_percent", return_value=34.5),
+        patch("app.collector.psutil.virtual_memory") as mock_mem,
+        patch("app.collector.psutil.disk_usage") as mock_disk,
+    ):
+        mock_mem.return_value.percent = 61.2
+        mock_disk.return_value.percent = 47.0
+
+        poll_self()
+
+    latest = get_latest("_self", "summary")
+    assert latest is not None
+    assert latest["value"] == {"cpu_percent": 34.5, "memory_percent": 61.2, "disk_percent": 47.0}

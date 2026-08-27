@@ -96,6 +96,10 @@ def create_app(
 
     flask_app.register_blueprint(admin_bp)
 
+    from app.routes.theme_routes import bp as theme_bp
+
+    flask_app.register_blueprint(theme_bp)
+
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
     if not testing:
