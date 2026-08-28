@@ -176,3 +176,27 @@ def test_refresh_source_triggers_poll_now(client, tmp_path, monkeypatch):
 
     assert response.status_code == 302
     mock_poll_now.assert_called_once_with("s1")
+
+
+def test_admin_system_page_requires_admin_tab(client):
+    with client.session_transaction() as sess:
+        sess["username"] = "alice"
+    response = client.get("/admin/system")
+    assert response.status_code == 403
+
+
+def test_admin_system_page_renders_host_metrics(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    from app import metrics_db
+
+    metrics_db.init_db()
+    metrics_db.write_snapshot(
+        "_self", "summary", {"cpu_percent": 12.5, "memory_percent": 40, "disk_percent": 55}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/admin/system")
+
+    assert response.status_code == 200
+    assert b"Host CPU" in response.data
+    assert b"Host Memory" in response.data
+    assert b"Host Disk" in response.data

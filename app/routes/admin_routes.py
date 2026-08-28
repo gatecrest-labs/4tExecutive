@@ -9,8 +9,11 @@ from app.collector import poll_now, poll_status
 from app.decorators import tab_required
 from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.sources import add_source, delete_source, list_sources
+from app.widgets import DEFAULT_RANGE, WIDGET_CATALOG, annotate
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+_HOST_WIDGET_TYPES = ["4texecutive.cpu_percent", "4texecutive.memory_percent", "4texecutive.disk_percent"]
 
 
 def _render_sources(error: str | None = None):
@@ -120,3 +123,17 @@ def delete_user_route(username):
     delete_user(username)
     set_user_groups(username, [])
     return redirect(url_for("admin.users"))
+
+
+@bp.route("/system", methods=["GET"])
+@tab_required("admin")
+def system():
+    widgets = [
+        annotate(
+            {"type": t, "source_instance": "_self", "size": WIDGET_CATALOG[t]["default_size"]},
+            with_data=True,
+            range_key=DEFAULT_RANGE,
+        )
+        for t in _HOST_WIDGET_TYPES
+    ]
+    return render_template("admin/system.html", widgets=widgets)

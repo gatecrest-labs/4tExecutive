@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Admin — Sources</h1>
-<p><a href="{{ url_for('admin.users') }}">Manage users →</a></p>
+<p><a href="{{ url_for('admin.users') }}">Manage users →</a> · <a href="{{ url_for('admin.system') }}">System →</a></p>
 <table>
   <thead><tr><th>ID</th><th>System</th><th>Name</th><th>Enabled</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>

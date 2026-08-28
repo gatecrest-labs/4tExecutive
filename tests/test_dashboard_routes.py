@@ -75,15 +75,15 @@ def test_dashboard_falls_back_to_default_layout_when_none_saved(client, tmp_path
     assert b"88" in response.data
 
 
-def test_dashboard_shows_only_host_widgets_when_no_saved_layout_and_no_sources(client, tmp_path, monkeypatch):
+def test_dashboard_shows_no_widgets_when_no_saved_layout_and_no_sources(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert response.data.count(b'class="widget widget-') == 3
-    assert b"Host CPU" in response.data
+    assert response.data.count(b'class="widget widget-') == 0
+    assert b"Host CPU" not in response.data
 
 
 def test_dashboard_prefers_saved_layout_over_default(client, tmp_path, monkeypatch):

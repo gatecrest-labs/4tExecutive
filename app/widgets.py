@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.metrics_db import get_history, get_latest
-from app.sources import list_sources
+from app.sources import get_source, list_sources
 from app.thresholds import get_thresholds
 
 
@@ -172,7 +172,9 @@ def default_layout() -> list[dict]:
     """Auto-generated fallback shown when a user has no saved layout: one
     widget per catalog entry x each enabled source whose system matches, so
     the dashboard shows everything currently configured instead of being
-    blank until someone builds a real per-user editor.
+    blank until someone builds a real per-user editor. Host metrics
+    (4texecutive.*) are excluded — they live on the Admin > System page,
+    not the executive dashboard.
 
     The AI usage widget is the one exception — it's only included when the
     source's latest snapshot reports ai_enabled: true, since most 4thealth
@@ -201,18 +203,6 @@ def default_layout() -> list[dict]:
                     "date_range": "30d",
                 }
             )
-
-    for widget_type, entry in WIDGET_CATALOG.items():
-        if entry["source_system"] != "4texecutive":
-            continue
-        widgets.append(
-            {
-                "type": widget_type,
-                "source_instance": "_self",
-                "size": entry["default_size"],
-                "date_range": "30d",
-            }
-        )
 
     return widgets
 
@@ -375,3 +365,20 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             "collected_at": history[-1]["collected_at"],
         },
     )
+
+
+def source_name(source_instance: str) -> str:
+    source = get_source(source_instance)
+    return source["name"] if source else source_instance
+
+
+def annotate(widget: dict, *, with_data: bool, range_key: str = DEFAULT_RANGE) -> dict:
+    entry = WIDGET_CATALOG[widget["type"]]
+    annotated = {
+        **widget,
+        "label": entry["label"],
+        "source_name": source_name(widget["source_instance"]),
+    }
+    if with_data:
+        annotated["data"] = get_widget_series(widget, range_key)
+    return annotated
