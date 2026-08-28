@@ -12,16 +12,20 @@ def _downsample(points: list[tuple[str, float]], max_points: int = 80) -> list[t
     """Downsample a list of (label, value) tuples to at most max_points by averaging buckets.
 
     If the input has max_points or fewer points, returns unchanged.
-    Otherwise, divides points into buckets and returns one averaged point per bucket.
+    Otherwise, divides points into max_points buckets and returns one averaged point per bucket.
     Uses the label from the first point in each bucket.
     Averages are rounded to integers if all values in the bucket are integers, else to 2 decimals.
     """
-    if len(points) <= max_points:
+    n = len(points)
+    if n <= max_points:
         return points
-    bucket_size = ceil(len(points) / max_points)
     bucketed = []
-    for i in range(0, len(points), bucket_size):
-        chunk = points[i : i + bucket_size]
+    for i in range(max_points):
+        start = (i * n) // max_points
+        end = ((i + 1) * n) // max_points
+        chunk = points[start:end]
+        if not chunk:
+            continue
         values = [v for _, v in chunk]
         avg = sum(values) / len(values)
         if all(isinstance(v, int) for v in values):
@@ -30,6 +34,7 @@ def _downsample(points: list[tuple[str, float]], max_points: int = 80) -> list[t
             avg = round(avg, 2)
         bucketed.append((chunk[0][0], avg))
     return bucketed
+
 
 WIDGET_CATALOG: dict[str, dict] = {
     "4thealth.hygiene_score": {

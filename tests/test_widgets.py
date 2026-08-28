@@ -235,3 +235,10 @@ def test_downsample_keeps_float_precision_for_float_inputs():
 
 def test_downsample_empty_list_returns_empty_list():
     assert _downsample([], max_points=80) == []
+
+
+def test_downsample_non_multiple_case_produces_exact_output_count():
+    """Test non-multiple input size (n=100, max_points=80) produces exactly max_points buckets."""
+    points = [(f"t{i}", i) for i in range(100)]
+    result = _downsample(points, max_points=80)
+    assert len(result) == 80
