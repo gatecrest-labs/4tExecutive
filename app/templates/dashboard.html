@@ -26,6 +26,9 @@
         {% if widget.data.points %}
           {{ charts.line_chart(widget.data.points, widget.data.min, widget.data.max) }}
           {% if widget.data.extra_label %}<p class="widget-extra">{{ widget.data.extra_label }}</p>{% endif %}
+          {% if widget.data.delta is not none %}
+            <p class="widget-delta">{% if widget.data.delta > 0 %}▲ +{{ widget.data.delta }}{% elif widget.data.delta < 0 %}▼ {{ widget.data.delta }}{% else %}— 0{% endif %}</p>
+          {% endif %}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
         {% else %}
           <p class="widget-empty">No data yet</p>

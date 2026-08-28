@@ -220,3 +220,4 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .chart-range-label { margin: 0.2rem 0 0; font-size: 0.7rem; color: var(--text-muted); }
 .chart-bar-count, .chart-bar-label { font-size: 6px; fill: var(--text-muted); }
 .widget-extra { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }
+.widget-delta { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }

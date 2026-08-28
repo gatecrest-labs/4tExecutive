@@ -321,7 +321,15 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         return _attach_rag(
             widget_instance["type"],
             entry,
-            {"chart": "line", "points": [], "min": None, "max": None, "extra_label": None, "collected_at": None},
+            {
+                "chart": "line",
+                "points": [],
+                "min": None,
+                "max": None,
+                "extra_label": None,
+                "delta": None,
+                "collected_at": None,
+            },
         )
 
     extra_label = None
@@ -352,6 +360,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     ]
     points = _downsample(points)
     values = [v for _, v in points]
+    delta = (values[-1] - values[0]) if len(values) >= 2 else None
 
     return _attach_rag(
         widget_instance["type"],
@@ -362,6 +371,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             "min": min(values) if values else None,
             "max": max(values) if values else None,
             "extra_label": extra_label,
+            "delta": delta,
             "collected_at": history[-1]["collected_at"],
         },
     )

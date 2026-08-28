@@ -379,6 +379,7 @@ def test_get_widget_series_line_no_history_returns_empty_chart():
         "min": None,
         "max": None,
         "extra_label": None,
+        "delta": None,
         "collected_at": None,
     }
 
@@ -488,3 +489,26 @@ def test_get_widget_series_fleet_availability_skips_snapshots_missing_a_side():
     result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "1d")
 
     assert len(result["points"]) == 1
+
+
+def test_get_widget_series_line_includes_delta_when_two_or_more_points():
+    write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(600))
+    write_snapshot("s1", "summary", {"rule_count_total": 130}, _iso(5))
+
+    result = get_widget_series({"type": "4thealth.rule_count_total", "source_instance": "s1"}, "30d")
+
+    assert result["delta"] == 30
+
+
+def test_get_widget_series_line_delta_none_with_one_point():
+    write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(5))
+
+    result = get_widget_series({"type": "4thealth.rule_count_total", "source_instance": "s1"}, "1d")
+
+    assert result["delta"] is None
+
+
+def test_get_widget_series_line_delta_none_with_no_history():
+    result = get_widget_series({"type": "4thealth.rule_count_total", "source_instance": "s1"}, "1d")
+
+    assert result["delta"] is None

@@ -378,3 +378,21 @@ def test_dashboard_renders_fleet_availability_widget(client, tmp_path, monkeypat
     assert b"Fleet Availability" in response.data
     assert b"9 / 10 (90%)" in response.data
     assert b"rag-amber" in response.data
+
+
+def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, "2026-08-01T10:00:00Z")
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 130}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/?range=30d")
+
+    assert response.status_code == 200
+    assert "▲ +30".encode() in response.data
