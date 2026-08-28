@@ -1,11 +1,17 @@
 """Tests for the widget catalog and data lookup."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import app.sources as sources_module
 from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
-from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value, _downsample
+from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value, get_widget_series, _downsample
+
+
+def _iso(minutes_ago: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
 
 
 @pytest.fixture(autouse=True)
@@ -242,3 +248,124 @@ def test_downsample_non_multiple_case_produces_exact_output_count():
     points = [(f"t{i}", i) for i in range(100)]
     result = _downsample(points, max_points=80)
     assert len(result) == 80
+
+
+def test_catalog_marks_expected_widgets_with_chart_type():
+    line_types = [
+        "4thealth.firewall_online_count",
+        "4thealth.firewall_managed_count",
+        "4thealth.rule_count_total",
+        "4thealth.adom_count",
+        "4thealth.ai_usage_24h",
+        "4texecutive.cpu_percent",
+        "4texecutive.memory_percent",
+        "4texecutive.disk_percent",
+    ]
+    for widget_type in line_types:
+        assert WIDGET_CATALOG[widget_type]["chart_type"] == "line"
+    assert WIDGET_CATALOG["4thealth.version_breakdown"]["chart_type"] == "bar"
+    assert "chart_type" not in WIDGET_CATALOG["4thealth.hygiene_score"]
+    assert "chart_type" not in WIDGET_CATALOG["4thealth.last_backup_status"]
+
+
+def test_get_widget_series_delegates_to_get_widget_value_for_unflagged_widget():
+    write_snapshot("s1", "summary", {"hygiene_score": 92}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result == {"value": 92, "collected_at": "2026-08-27T10:00:00Z"}
+    assert "chart" not in result
+
+
+def test_get_widget_series_line_builds_points_from_history_within_range():
+    write_snapshot("s1", "summary", {"firewall_managed_count": 10}, _iso(600))
+    write_snapshot("s1", "summary", {"firewall_managed_count": 20}, _iso(30))
+    write_snapshot("s1", "summary", {"firewall_managed_count": 30}, _iso(5))
+    widget = {"type": "4thealth.firewall_managed_count", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["chart"] == "line"
+    assert [v for _, v in result["points"]] == [10, 20, 30]
+    assert result["min"] == 10
+    assert result["max"] == 30
+    assert result["collected_at"] is not None
+
+
+def test_get_widget_series_line_excludes_snapshots_outside_range():
+    write_snapshot("s1", "summary", {"firewall_managed_count": 999}, _iso(60 * 24 * 40))  # 40 days ago
+    write_snapshot("s1", "summary", {"firewall_managed_count": 5}, _iso(10))
+    widget = {"type": "4thealth.firewall_managed_count", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert [v for _, v in result["points"]] == [5]
+
+
+def test_get_widget_series_line_no_history_returns_empty_chart():
+    widget = {"type": "4thealth.firewall_managed_count", "source_instance": "unpolled"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result == {
+        "chart": "line",
+        "points": [],
+        "min": None,
+        "max": None,
+        "extra_label": None,
+        "collected_at": None,
+    }
+
+
+def test_get_widget_series_bar_uses_latest_snapshot_only_ignoring_range():
+    write_snapshot(
+        "s1", "summary",
+        {"version_breakdown": {"7.4.5": 62, "7.2.9": 41}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "4h")
+
+    assert result["chart"] == "bar"
+    assert result["data"] == {"7.4.5": 62, "7.2.9": 41}
+    assert result["collected_at"] is not None
+
+
+def test_get_widget_series_bar_no_snapshot_returns_empty_chart():
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "unpolled"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result == {"chart": "bar", "data": {}, "collected_at": None}
+
+
+def test_get_widget_series_ai_usage_charts_connection_count_and_carries_cost():
+    write_snapshot(
+        "s1", "summary",
+        {"ai_usage_24h": {"ai_connection_count_24h": 100, "ai_estimated_cost_24h_usd": 1.5}},
+        _iso(30),
+    )
+    write_snapshot(
+        "s1", "summary",
+        {"ai_usage_24h": {"ai_connection_count_24h": 340, "ai_estimated_cost_24h_usd": 4.1}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.ai_usage_24h", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["chart"] == "line"
+    assert [v for _, v in result["points"]] == [100, 340]
+    assert result["extra_label"] == "$4.10 est. cost (24h)"
+
+
+def test_get_widget_series_downsamples_long_line_series():
+    for i in range(200):
+        write_snapshot("s1", "summary", {"cpu_percent": i % 100}, _iso(200 - i))
+    widget = {"type": "4texecutive.cpu_percent", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert len(result["points"]) <= 80

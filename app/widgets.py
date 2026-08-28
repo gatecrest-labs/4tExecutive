@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from math import ceil
 
-from app.metrics_db import get_latest
+from app.metrics_db import get_history, get_latest
 from app.sources import list_sources
 
 
@@ -71,6 +72,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "firewall_online_count",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4thealth.firewall_managed_count": {
         "label": "Firewalls Managed",
@@ -78,6 +80,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "firewall_managed_count",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4thealth.rule_count_total": {
         "label": "Total Rules",
@@ -85,6 +88,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "rule_count_total",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4thealth.adom_count": {
         "label": "ADOMs Configured",
@@ -92,6 +96,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "adom_count",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4thealth.version_breakdown": {
         "label": "FortiOS Versions",
@@ -99,6 +104,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "version_breakdown",
         "default_size": "2x2",
+        "chart_type": "bar",
     },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
@@ -106,6 +112,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "ai_usage_24h",
         "default_size": "2x1",
+        "chart_type": "line",
     },
     "4texecutive.cpu_percent": {
         "label": "Host CPU",
@@ -113,6 +120,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "cpu_percent",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4texecutive.memory_percent": {
         "label": "Host Memory",
@@ -120,6 +128,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "memory_percent",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4texecutive.disk_percent": {
         "label": "Host Disk",
@@ -127,6 +136,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "disk_percent",
         "default_size": "1x1",
+        "chart_type": "line",
     },
     "4tlog.faz_health": {
         "label": "FortiAnalyzer Health",
@@ -200,4 +210,79 @@ def get_widget_value(widget_instance: dict) -> dict | None:
     return {
         "value": latest["value"].get(entry["field"]),
         "collected_at": latest["collected_at"],
+    }
+
+
+RANGES: dict[str, timedelta] = {
+    "4h": timedelta(hours=4),
+    "12h": timedelta(hours=12),
+    "1d": timedelta(days=1),
+    "7d": timedelta(days=7),
+    "14d": timedelta(days=14),
+    "30d": timedelta(days=30),
+}
+DEFAULT_RANGE = "1d"
+
+
+def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
+    """Return chart-ready data for a widget, or fall back to get_widget_value.
+
+    Widgets without a chart_type in the catalog return the same shape as
+    get_widget_value. "bar" widgets always chart the latest snapshot
+    (range_key is ignored). "line" widgets chart history within range_key,
+    downsampled to at most 80 points via _downsample.
+    """
+    entry = WIDGET_CATALOG[widget_instance["type"]]
+    chart_type = entry.get("chart_type")
+    if chart_type is None:
+        return get_widget_value(widget_instance)
+
+    source_id = widget_instance["source_instance"]
+
+    if chart_type == "bar":
+        latest = get_latest(source_id, entry["metric_type"])
+        if latest is None:
+            return {"chart": "bar", "data": {}, "collected_at": None}
+        return {
+            "chart": "bar",
+            "data": latest["value"].get(entry["field"]) or {},
+            "collected_at": latest["collected_at"],
+        }
+
+    range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
+    since = (datetime.now(timezone.utc) - range_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+    history = get_history(source_id, entry["metric_type"], since)
+    if not history:
+        return {
+            "chart": "line",
+            "points": [],
+            "min": None,
+            "max": None,
+            "extra_label": None,
+            "collected_at": None,
+        }
+
+    extra_label = None
+    if widget_instance["type"] == "4thealth.ai_usage_24h":
+        points = [
+            (h["collected_at"], h["value"].get("ai_usage_24h", {}).get("ai_connection_count_24h"))
+            for h in history
+        ]
+        cost = history[-1]["value"].get("ai_usage_24h", {}).get("ai_estimated_cost_24h_usd")
+        if cost is not None:
+            extra_label = f"${cost:.2f} est. cost (24h)"
+    else:
+        points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
+
+    points = [(t, v) for t, v in points if v is not None]
+    points = _downsample(points)
+    values = [v for _, v in points]
+
+    return {
+        "chart": "line",
+        "points": points,
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
+        "extra_label": extra_label,
+        "collected_at": history[-1]["collected_at"],
     }
