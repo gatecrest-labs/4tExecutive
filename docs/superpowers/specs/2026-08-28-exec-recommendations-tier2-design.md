@@ -138,13 +138,21 @@ existing 15/30-min cache fetches policy/rule data. However, `_run_hygiene_sweep(
 default cadence) already accumulates `total_policies` as a byproduct of its `find_unused_objects`
 loop (structurally identical to `summary_job.py`'s `rules_total`) — it's just never stored.
 
-**Change:** remove `app/summary_job.py`'s daily cron job entirely. Store `total_policies` as a
-new `_store["rule_count_total"]` field inside `_run_hygiene_sweep()`. The external API route
-reads it from there instead of `summary_job.get_summary()`.
+**Correction found during plan-writing:** `summary_job.py`'s daily job is not solely an
+executive-payload input — its `_run_job` also calls `app.summary_history.record_today()`, the
+sole writer behind `app/routes/api_routes.py::summary_history()`, a live internal 4thealth+
+route serving a 30-day firewalls/rules trend graph unrelated to the executive API. Deleting the
+job would silently break that internal feature. It stays.
 
-**Result:** cadence goes from ~24h-stale (worst case, just before the 01:00 run) to ~60min,
-with zero new API calls — a net reduction in fleet API load, since the daily job's per-package
-`get_policy_count` calls are eliminated rather than duplicated.
+**Change:** store `total_policies` as a new `_store["rule_count_total"]` field inside
+`_run_hygiene_sweep()`. The external API route reads it from there instead of
+`summary_job.get_summary()`. `summary_job.py` is untouched — it keeps running daily, still
+recording `summary_history.json` for the internal trend graph — only the *external payload's*
+source for `rule_count_total` changes.
+
+**Result:** the external payload's `rule_count_total` cadence goes from ~24h-stale (worst case,
+just before the 01:00 run) to ~60min, with zero new API calls (reuses data the hygiene sweep
+already fetches). The internal 30-day trend graph is unaffected.
 
 ## 6. Version EOL flagging (4thealth+)
 
