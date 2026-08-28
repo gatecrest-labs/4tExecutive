@@ -110,7 +110,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "ai_usage_24h",
-        "default_size": "2x1",
+        "default_size": "2x2",
         "chart_type": "line",
     },
     "4texecutive.cpu_percent": {
