@@ -86,6 +86,15 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "1x1",
         "chart_type": "line",
     },
+    "4thealth.fleet_availability": {
+        "label": "Fleet Availability",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "firewall_online_count",
+        "default_size": "1x1",
+        "chart_type": "line",
+        "rag": {"direction": "ratio", "green": 100, "amber": 90},
+    },
     "4thealth.rule_count_total": {
         "label": "Total Rules",
         "source_system": "4thealth",
@@ -175,6 +184,8 @@ def default_layout() -> list[dict]:
     """
     widgets = []
     for widget_type, entry in WIDGET_CATALOG.items():
+        if widget_type in {"4thealth.firewall_online_count", "4thealth.firewall_managed_count"}:
+            continue
         for source in list_sources():
             if source.get("system") != entry["source_system"] or not source.get("enabled", True):
                 continue
@@ -322,6 +333,17 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         cost = (history[-1]["value"].get("ai_usage_24h") or {}).get("ai_estimated_cost_24h_usd")
         if cost is not None:
             extra_label = f"${cost:.2f} est. cost (24h)"
+    elif widget_instance["type"] == "4thealth.fleet_availability":
+        points = []
+        for h in history:
+            online = h["value"].get("firewall_online_count")
+            total = h["value"].get("firewall_managed_count")
+            if isinstance(online, (int, float)) and isinstance(total, (int, float)) and total:
+                points.append((h["collected_at"], round(online / total * 100, 1)))
+        latest_online = history[-1]["value"].get("firewall_online_count")
+        latest_total = history[-1]["value"].get("firewall_managed_count")
+        if isinstance(latest_online, (int, float)) and isinstance(latest_total, (int, float)) and latest_total:
+            extra_label = f"{latest_online} / {latest_total} ({round(latest_online / latest_total * 100)}%)"
     else:
         points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
 

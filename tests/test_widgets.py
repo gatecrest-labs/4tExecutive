@@ -127,9 +127,10 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
 
     fourthealth_widgets = [w for w in layout if w["type"].startswith("4thealth.")]
     types = {w["type"] for w in fourthealth_widgets}
+    excluded = {"4thealth.ai_usage_24h", "4thealth.firewall_online_count", "4thealth.firewall_managed_count"}
     expected = {
         t for t, e in WIDGET_CATALOG.items()
-        if e["source_system"] == "4thealth" and t != "4thealth.ai_usage_24h"
+        if e["source_system"] == "4thealth" and t not in excluded
     }
     assert types == expected
     assert all(w["source_instance"] == "4th-1" for w in fourthealth_widgets)
@@ -433,3 +434,57 @@ def test_get_widget_series_downsamples_long_line_series():
     result = get_widget_series(widget, "30d")
 
     assert len(result["points"]) <= 80
+
+
+def test_catalog_has_fleet_availability_widget():
+    entry = WIDGET_CATALOG["4thealth.fleet_availability"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "line"
+    assert entry["rag"] == {"direction": "ratio", "green": 100, "amber": 90}
+
+
+def test_default_layout_includes_fleet_availability_not_the_aliased_pair():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+
+    layout = default_layout()
+
+    types = {w["type"] for w in layout}
+    assert "4thealth.fleet_availability" in types
+    assert "4thealth.firewall_online_count" not in types
+    assert "4thealth.firewall_managed_count" not in types
+
+
+def test_get_widget_series_fleet_availability_computes_percentage_points():
+    write_snapshot(
+        "s1", "summary", {"firewall_online_count": 8, "firewall_managed_count": 10}, _iso(30)
+    )
+    write_snapshot(
+        "s1", "summary", {"firewall_online_count": 10, "firewall_managed_count": 10}, _iso(5)
+    )
+    widget = {"type": "4thealth.fleet_availability", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["chart"] == "line"
+    assert [v for _, v in result["points"]] == [80.0, 100.0]
+    assert result["extra_label"] == "10 / 10 (100%)"
+    assert result["rag"] == "green"
+
+
+def test_get_widget_series_fleet_availability_amber_and_red():
+    write_snapshot("s1", "summary", {"firewall_online_count": 9, "firewall_managed_count": 10}, _iso(5))
+    result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "1d")
+    assert result["rag"] == "amber"
+
+    write_snapshot("s1", "summary", {"firewall_online_count": 5, "firewall_managed_count": 10}, _iso(1))
+    result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "1d")
+    assert result["rag"] == "red"
+
+
+def test_get_widget_series_fleet_availability_skips_snapshots_missing_a_side():
+    write_snapshot("s1", "summary", {"firewall_online_count": 8}, _iso(10))
+    write_snapshot("s1", "summary", {"firewall_online_count": 9, "firewall_managed_count": 10}, _iso(5))
+
+    result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "1d")
+
+    assert len(result["points"]) == 1

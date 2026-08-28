@@ -357,3 +357,24 @@ def test_dashboard_no_rag_class_for_informational_widget(client, tmp_path, monke
 
     assert response.status_code == 200
     assert b"rag-" not in response.data
+
+
+def test_dashboard_renders_fleet_availability_widget(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.fleet_availability", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"firewall_online_count": 9, "firewall_managed_count": 10}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/?range=30d")
+
+    assert response.status_code == 200
+    assert b"Fleet Availability" in response.data
+    assert b"9 / 10 (90%)" in response.data
+    assert b"rag-amber" in response.data
