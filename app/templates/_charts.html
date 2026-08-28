@@ -1,0 +1,26 @@
+{% macro line_chart(points, min_v, max_v) %}
+{% set n = points | length %}
+<svg class="chart-svg chart-line" viewBox="0 0 240 60" preserveAspectRatio="none">
+  {% if n == 1 %}
+  <line x1="0" y1="30" x2="240" y2="30" stroke="var(--accent)" stroke-width="2" />
+  {% else %}
+  {% set span = (max_v - min_v) if max_v != min_v else 1 %}
+  <polyline fill="none" stroke="var(--accent)" stroke-width="2" points="{% for t, v in points %}{{ '%.2f' | format((loop.index0 / (n - 1)) * 240) }},{{ '%.2f' | format(56 - ((v - min_v) / span) * 52) }}{% if not loop.last %} {% endif %}{% endfor %}" />
+  {% endif %}
+</svg>
+<p class="chart-range-label"><span>{{ min_v }}</span> – <span>{{ max_v }}</span></p>
+{% endmacro %}
+
+{% macro bar_chart(data) %}
+{% set count = data | length %}
+{% set max_v = data.values() | max %}
+<svg class="chart-svg chart-bar" viewBox="0 0 240 80" preserveAspectRatio="none">
+  {% for version, value in data.items() %}
+  {% set bar_w = 240 / count %}
+  {% set bar_h = (value / max_v) * 55 if max_v else 0 %}
+  <rect x="{{ '%.2f' | format(loop.index0 * bar_w + 4) }}" y="{{ '%.2f' | format(70 - bar_h) }}" width="{{ '%.2f' | format(bar_w - 8) }}" height="{{ '%.2f' | format(bar_h) }}" fill="var(--accent)" />
+  <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="{{ '%.2f' | format(70 - bar_h - 3) }}" text-anchor="middle" class="chart-bar-count">{{ value }}</text>
+  <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="78" text-anchor="middle" class="chart-bar-label">{{ version }}</text>
+  {% endfor %}
+</svg>
+{% endmacro %}
