@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.metrics_db import get_history, get_latest
 from app.sources import list_sources
+from app.thresholds import get_thresholds
 
 
 def _downsample(points: list[tuple[str, float]], max_points: int = 80) -> list[tuple[str, float]]:
@@ -43,6 +44,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "hygiene_score",
         "default_size": "1x1",
+        "rag": {"direction": "higher", "green": 90, "amber": 75},
     },
     "4thealth.version_compliance": {
         "label": "Device Version Compliance %",
@@ -50,6 +52,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "version_compliance_pct",
         "default_size": "1x1",
+        "rag": {"direction": "higher", "green": 95, "amber": 85},
     },
     "4thealth.pending_config_diffs": {
         "label": "Pending Config Diffs",
@@ -57,13 +60,15 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "pending_config_diff_count",
         "default_size": "1x1",
+        "rag": {"direction": "lower", "green": 0, "amber": 5},
     },
     "4thealth.last_backup_status": {
-        "label": "Last Backup Status",
+        "label": "App Config Backup",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "last_backup_status",
         "default_size": "1x1",
+        "rag": {"direction": "string_ok"},
     },
     "4thealth.firewall_online_count": {
         "label": "Firewalls Online",
@@ -201,15 +206,61 @@ def default_layout() -> list[dict]:
     return widgets
 
 
+def _rag_state(value, thresholds: dict) -> str | None:
+    """Classify value as green/amber/red per a threshold spec, or None if unclassifiable."""
+    if value is None:
+        return None
+    direction = thresholds["direction"]
+    if direction == "string_ok":
+        return "green" if isinstance(value, str) and value.strip().lower().startswith("ok") else "red"
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    green = thresholds.get("green")
+    amber = thresholds.get("amber")
+    if direction in ("higher", "ratio"):
+        if green is not None and value >= green:
+            return "green"
+        if amber is not None and value >= amber:
+            return "amber"
+        return "red"
+    if direction == "lower":
+        if green is not None and value <= green:
+            return "green"
+        if amber is not None and value <= amber:
+            return "amber"
+        return "red"
+    return None
+
+
+def _attach_rag(widget_type: str, entry: dict, result: dict) -> dict:
+    """Add a "rag" key to result when the widget type has RAG thresholds and a classifiable value.
+
+    Reads the value to classify from result["value"] (get_widget_value shape)
+    or, for line charts, the most recent point in result["points"].
+    """
+    thresholds = get_thresholds(widget_type, entry.get("rag"))
+    if thresholds is None:
+        return result
+    if "value" in result:
+        value = result["value"]
+    elif result.get("chart") == "line":
+        value = result["points"][-1][1] if result["points"] else None
+    else:
+        return result
+    result["rag"] = _rag_state(value, thresholds)
+    return result
+
+
 def get_widget_value(widget_instance: dict) -> dict | None:
     entry = WIDGET_CATALOG[widget_instance["type"]]
     latest = get_latest(widget_instance["source_instance"], entry["metric_type"])
     if latest is None:
         return None
-    return {
+    result = {
         "value": latest["value"].get(entry["field"]),
         "collected_at": latest["collected_at"],
     }
+    return _attach_rag(widget_instance["type"], entry, result)
 
 
 RANGES: dict[str, timedelta] = {
@@ -241,25 +292,26 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     if chart_type == "bar":
         latest = get_latest(source_id, entry["metric_type"])
         if latest is None:
-            return {"chart": "bar", "data": {}, "collected_at": None}
-        return {
-            "chart": "bar",
-            "data": latest["value"].get(entry["field"]) or {},
-            "collected_at": latest["collected_at"],
-        }
+            return _attach_rag(widget_instance["type"], entry, {"chart": "bar", "data": {}, "collected_at": None})
+        return _attach_rag(
+            widget_instance["type"],
+            entry,
+            {
+                "chart": "bar",
+                "data": latest["value"].get(entry["field"]) or {},
+                "collected_at": latest["collected_at"],
+            },
+        )
 
     range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
     since = (datetime.now(UTC) - range_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
     history = get_history(source_id, entry["metric_type"], since)
     if not history:
-        return {
-            "chart": "line",
-            "points": [],
-            "min": None,
-            "max": None,
-            "extra_label": None,
-            "collected_at": None,
-        }
+        return _attach_rag(
+            widget_instance["type"],
+            entry,
+            {"chart": "line", "points": [], "min": None, "max": None, "extra_label": None, "collected_at": None},
+        )
 
     extra_label = None
     if widget_instance["type"] == "4thealth.ai_usage_24h":
@@ -279,11 +331,15 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     points = _downsample(points)
     values = [v for _, v in points]
 
-    return {
-        "chart": "line",
-        "points": points,
-        "min": min(values) if values else None,
-        "max": max(values) if values else None,
-        "extra_label": extra_label,
-        "collected_at": history[-1]["collected_at"],
-    }
+    return _attach_rag(
+        widget_instance["type"],
+        entry,
+        {
+            "chart": "line",
+            "points": points,
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+            "extra_label": extra_label,
+            "collected_at": history[-1]["collected_at"],
+        },
+    )

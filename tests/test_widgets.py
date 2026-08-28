@@ -42,7 +42,65 @@ def test_get_widget_value_returns_field_from_latest_snapshot():
 
     result = get_widget_value(widget)
 
-    assert result == {"value": 92, "collected_at": "2026-08-24T10:00:00Z"}
+    assert result == {"value": 92, "collected_at": "2026-08-24T10:00:00Z", "rag": "green"}
+
+
+def test_get_widget_value_rag_amber_between_thresholds():
+    write_snapshot("s1", "summary", {"hygiene_score": 80}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert get_widget_value(widget)["rag"] == "amber"
+
+
+def test_get_widget_value_rag_red_below_thresholds():
+    write_snapshot("s1", "summary", {"hygiene_score": 40}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert get_widget_value(widget)["rag"] == "red"
+
+
+def test_get_widget_value_no_rag_key_for_informational_widget():
+    write_snapshot("s1", "summary", {"rule_count_total": 14200}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert "rag" not in result
+
+
+def test_get_widget_value_rag_none_when_value_missing():
+    write_snapshot("s1", "summary", {"some_other_field": 1}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["value"] is None
+    assert result["rag"] is None
+
+
+def test_get_widget_value_rag_lower_direction_for_pending_config_diffs():
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 0}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.pending_config_diffs", "source_instance": "s1"}
+    assert get_widget_value(widget)["rag"] == "green"
+
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 3}, "2026-08-27T10:01:00Z")
+    assert get_widget_value(widget)["rag"] == "amber"
+
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 9}, "2026-08-27T10:02:00Z")
+    assert get_widget_value(widget)["rag"] == "red"
+
+
+def test_get_widget_value_rag_string_ok_for_backup_status():
+    write_snapshot("s1", "summary", {"last_backup_status": "ok"}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.last_backup_status", "source_instance": "s1"}
+    assert get_widget_value(widget)["rag"] == "green"
+
+    write_snapshot("s1", "summary", {"last_backup_status": "failed: disk full"}, "2026-08-27T10:01:00Z")
+    assert get_widget_value(widget)["rag"] == "red"
+
+
+def test_widget_catalog_backup_widget_relabeled():
+    assert WIDGET_CATALOG["4thealth.last_backup_status"]["label"] == "App Config Backup"
 
 
 def test_get_widget_value_returns_none_when_no_snapshot_yet():
@@ -280,7 +338,7 @@ def test_get_widget_series_delegates_to_get_widget_value_for_unflagged_widget():
 
     result = get_widget_series(widget, "1d")
 
-    assert result == {"value": 92, "collected_at": "2026-08-27T10:00:00Z"}
+    assert result == {"value": 92, "collected_at": "2026-08-27T10:00:00Z", "rag": "green"}
     assert "chart" not in result
 
 
