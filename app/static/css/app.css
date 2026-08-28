@@ -194,3 +194,23 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
   .widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .widget-2x1, .widget-2x2 { grid-column: span 2; }
 }
+
+.range-selector { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+
+.range-btn {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.range-btn:hover { opacity: 0.85; }
+.range-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+.chart-svg { width: 100%; height: auto; display: block; }
+.chart-range-label { margin: 0.2rem 0 0; font-size: 0.7rem; color: var(--text-muted); }
+.chart-bar-count, .chart-bar-label { font-size: 6px; fill: var(--text-muted); }
+.widget-extra { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }

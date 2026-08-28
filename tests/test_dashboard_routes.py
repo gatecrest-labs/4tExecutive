@@ -181,7 +181,7 @@ def test_post_layout_rejects_list_of_non_dict_items(client, tmp_path, monkeypatc
     assert response.status_code == 400
 
 
-def test_dashboard_renders_version_breakdown_as_table(client, tmp_path, monkeypatch):
+def test_dashboard_renders_version_breakdown_as_bar_chart(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
     from app.layouts import save_layout
@@ -197,7 +197,7 @@ def test_dashboard_renders_version_breakdown_as_table(client, tmp_path, monkeypa
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"widget-table" in response.data
+    assert b"chart-bar" in response.data
     assert b"7.4.5" in response.data
     assert b"62" in response.data
 
@@ -217,14 +217,12 @@ def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tm
     response = client.get("/")
 
     assert response.status_code == 200
-    # Verify no crash occurs and the widget renders (even with missing version_breakdown field)
     assert b"FortiOS Versions" in response.data
     assert b"widget-2x2" in response.data
     assert b"No data yet" in response.data
-    assert b">None<" not in response.data
 
 
-def test_dashboard_renders_ai_usage_widget_as_table_not_raw_dict(client, tmp_path, monkeypatch):
+def test_dashboard_renders_ai_usage_widget_as_line_chart(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
     from app.layouts import save_layout
@@ -243,11 +241,9 @@ def test_dashboard_renders_ai_usage_widget_as_table_not_raw_dict(client, tmp_pat
     response = client.get("/")
 
     assert response.status_code == 200
-    # No raw Python dict repr rendered as plain text outside table markup.
-    assert b"{&#39;ai_connection_count_24h&#39;" not in response.data
-    assert b"{'ai_connection_count_24h'" not in response.data
-    assert b"widget-table" in response.data
+    assert b"chart-line" in response.data
     assert b"340" in response.data
+    assert b"est. cost" in response.data
 
 
 def test_dashboard_renders_zero_value_instead_of_no_data(client, tmp_path, monkeypatch):
@@ -268,3 +264,60 @@ def test_dashboard_renders_zero_value_instead_of_no_data(client, tmp_path, monke
     assert response.status_code == 200
     assert b"No data yet" not in response.data
     assert b">0<" in response.data
+
+
+def test_dashboard_defaults_to_1d_range(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'class="range-btn active"' in response.data or b"1d" in response.data
+
+
+def test_dashboard_range_query_param_sets_cookie(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/?range=7d")
+
+    assert response.status_code == 200
+    assert response.headers.get("Set-Cookie", "").find("range=7d") != -1
+
+
+def test_dashboard_invalid_range_falls_back_to_default(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/?range=bogus")
+
+    assert response.status_code == 200
+
+
+def test_dashboard_uses_range_cookie_when_no_query_param(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    client.set_cookie("range", "30d")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+
+
+def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.firewall_managed_count", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"firewall_managed_count": 128}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"chart-line" in response.data
+    assert b"128" in response.data

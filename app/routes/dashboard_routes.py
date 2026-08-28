@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template, request, session
+from flask import Blueprint, jsonify, make_response, render_template, request, session
 
 from app.decorators import tab_required
 from app.layouts import get_layout, save_layout
 from app.sources import get_source
-from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value
+from app.widgets import DEFAULT_RANGE, RANGES, WIDGET_CATALOG, default_layout, get_widget_series
 
 bp = Blueprint("dashboard", __name__)
 
@@ -17,7 +17,7 @@ def _source_name(source_instance: str) -> str:
     return source["name"] if source else source_instance
 
 
-def _annotate(widget: dict, *, with_data: bool) -> dict:
+def _annotate(widget: dict, *, with_data: bool, range_key: str = DEFAULT_RANGE) -> dict:
     entry = WIDGET_CATALOG[widget["type"]]
     annotated = {
         **widget,
@@ -25,8 +25,13 @@ def _annotate(widget: dict, *, with_data: bool) -> dict:
         "source_name": _source_name(widget["source_instance"]),
     }
     if with_data:
-        annotated["data"] = get_widget_value(widget)
+        annotated["data"] = get_widget_series(widget, range_key)
     return annotated
+
+
+def _resolve_range() -> str:
+    range_key = request.args.get("range") or request.cookies.get("range") or DEFAULT_RANGE
+    return range_key if range_key in RANGES else DEFAULT_RANGE
 
 
 @bp.route("/")
@@ -36,9 +41,22 @@ def index():
     # when the user hasn't saved a custom layout, so the dashboard shows
     # everything currently configured instead of being blank by default —
     # see app/widgets.py:default_layout.
+    range_key = _resolve_range()
     layout = get_layout(session["username"]) or default_layout()
-    widgets = [_annotate(widget, with_data=True) for widget in layout]
-    return render_template("dashboard.html", widgets=widgets, edit_mode=False, catalog=None)
+    widgets = [_annotate(widget, with_data=True, range_key=range_key) for widget in layout]
+    response = make_response(
+        render_template(
+            "dashboard.html",
+            widgets=widgets,
+            edit_mode=False,
+            catalog=None,
+            range_key=range_key,
+            ranges=list(RANGES),
+        )
+    )
+    if request.args.get("range"):
+        response.set_cookie("range", range_key, max_age=60 * 60 * 24 * 365, samesite="Lax")
+    return response
 
 
 @bp.route("/dashboard/edit")

@@ -1,6 +1,14 @@
 {% extends "base.html" %}
+{% import "_charts.html" as charts %}
 {% block content %}
 <h1>Dashboard</h1>
+{% if not edit_mode %}
+<div class="range-selector">
+  {% for r in ranges %}
+    <a href="{{ url_for('dashboard.index') }}?range={{ r }}" class="range-btn{% if r == range_key %} active{% endif %}">{{ r }}</a>
+  {% endfor %}
+</div>
+{% endif %}
 {% if edit_mode %}
   <p>Edit mode — available widgets:</p>
   <ul>
@@ -14,7 +22,22 @@
     <div class="widget widget-{{ widget.size|default('1x1') }}">
       <h3>{{ widget.label }}</h3>
       <p class="widget-source">{{ widget.source_name }}</p>
-      {% if widget.data and widget.data.value is not none %}
+      {% if widget.data and widget.data.chart == 'line' %}
+        {% if widget.data.points %}
+          {{ charts.line_chart(widget.data.points, widget.data.min, widget.data.max) }}
+          {% if widget.data.extra_label %}<p class="widget-extra">{{ widget.data.extra_label }}</p>{% endif %}
+          <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+        {% else %}
+          <p class="widget-empty">No data yet</p>
+        {% endif %}
+      {% elif widget.data and widget.data.chart == 'bar' %}
+        {% if widget.data.data %}
+          {{ charts.bar_chart(widget.data.data) }}
+          <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+        {% else %}
+          <p class="widget-empty">No data yet</p>
+        {% endif %}
+      {% elif widget.data and widget.data.value is not none %}
         {% if widget.data.value is mapping %}
           <table class="widget-table">
             {% for version, count in widget.data.value.items() %}
