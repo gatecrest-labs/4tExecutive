@@ -221,3 +221,13 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .chart-bar-count, .chart-bar-label { font-size: 6px; fill: var(--text-muted); }
 .widget-extra { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }
 .widget-delta { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }
+
+.posture-strip { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding: 0.6rem 0.9rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--surface-border); font-size: 0.85rem; }
+.posture-pill { font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 999px; color: var(--accent-fg); }
+.posture-ok .posture-pill { background: var(--status-ok); }
+.posture-attention .posture-pill { background: var(--status-amber); }
+.posture-critical .posture-pill { background: var(--status-failed); }
+.posture-counts { color: var(--text); text-decoration: none; }
+.posture-counts:hover { text-decoration: underline; }
+.posture-freshness { margin-left: auto; color: var(--text-muted); font-size: 0.78rem; }
+.posture-stale { color: var(--status-amber); }

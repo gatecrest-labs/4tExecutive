@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from flask import Blueprint, jsonify, make_response, render_template, request, session
 
 from app.decorators import tab_required
@@ -34,6 +36,44 @@ def _resolve_range() -> str:
     return range_key if range_key in RANGES else DEFAULT_RANGE
 
 
+def _posture(widgets: list[dict]) -> dict | None:
+    """Aggregate already-computed per-widget RAG state and freshness into one summary row.
+
+    No new queries — reads widget["data"]["rag"] / ["collected_at"] from the
+    already-annotated widget list. Returns None when no widget in the layout
+    carries a RAG state (nothing to summarize).
+    """
+    rag_widgets = [(i, w) for i, w in enumerate(widgets, start=1) if w.get("data") and w["data"].get("rag")]
+    if not rag_widgets:
+        return None
+
+    reds = [i for i, w in rag_widgets if w["data"]["rag"] == "red"]
+    ambers = [i for i, w in rag_widgets if w["data"]["rag"] == "amber"]
+    overall = "Critical" if reds else "Attention" if ambers else "OK"
+    first_offender_index = reds[0] if reds else (ambers[0] if ambers else None)
+
+    timestamps = [w["data"]["collected_at"] for w in widgets if w.get("data") and w["data"].get("collected_at")]
+    oldest_minutes_ago = None
+    stale = False
+    if timestamps:
+        oldest = min(timestamps)
+        oldest_dt = datetime.fromisoformat(oldest)
+        oldest_minutes_ago = round((datetime.now(UTC) - oldest_dt).total_seconds() / 60)
+        longest_interval = max(
+            (get_source(w["source_instance"]) or {}).get("poll_interval_minutes", 15) for w in widgets
+        )
+        stale = oldest_minutes_ago > 2 * longest_interval
+
+    return {
+        "overall": overall,
+        "critical_count": len(reds),
+        "attention_count": len(ambers),
+        "oldest_minutes_ago": oldest_minutes_ago,
+        "stale": stale,
+        "first_offender_index": first_offender_index,
+    }
+
+
 @bp.route("/")
 @tab_required("dashboard")
 def index():
@@ -44,6 +84,7 @@ def index():
     range_key = _resolve_range()
     layout = get_layout(session["username"]) or default_layout()
     widgets = [_annotate(widget, with_data=True, range_key=range_key) for widget in layout]
+    posture = _posture(widgets)
     response = make_response(
         render_template(
             "dashboard.html",
@@ -52,6 +93,7 @@ def index():
             catalog=None,
             range_key=range_key,
             ranges=list(RANGES),
+            posture=posture,
         )
     )
     if request.args.get("range"):

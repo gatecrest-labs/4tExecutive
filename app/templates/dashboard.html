@@ -2,6 +2,17 @@
 {% import "_charts.html" as charts %}
 {% block content %}
 <h1>Dashboard</h1>
+{% if not edit_mode and posture %}
+<div class="posture-strip posture-{{ posture.overall|lower }}">
+  <span class="posture-pill">{{ posture.overall }}</span>
+  {% if posture.critical_count or posture.attention_count %}
+  <a class="posture-counts" href="#widget-{{ posture.first_offender_index }}">{{ posture.critical_count }} critical · {{ posture.attention_count }} attention</a>
+  {% endif %}
+  {% if posture.oldest_minutes_ago is not none %}
+  <span class="posture-freshness{% if posture.stale %} posture-stale{% endif %}">oldest data: {{ posture.oldest_minutes_ago }} min ago</span>
+  {% endif %}
+</div>
+{% endif %}
 {% if not edit_mode %}
 <div class="range-selector">
   {% for r in ranges %}

@@ -396,3 +396,78 @@ def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert "▲ +30".encode() in response.data
+
+
+def test_dashboard_posture_strip_ok_when_all_green(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 95}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"posture-ok" in response.data
+    assert b"OK" in response.data
+
+
+def test_dashboard_posture_strip_critical_when_any_red(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [
+            {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"},
+            {"type": "4thealth.pending_config_diffs", "source_instance": "s1", "size": "1x1", "date_range": "30d"},
+        ],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 95}, "2026-08-27T10:00:00Z")
+    metrics_db.write_snapshot("s1", "summary", {"pending_config_diff_count": 20}, "2026-08-27T10:01:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"posture-critical" in response.data
+    assert b"Critical" in response.data
+    assert b"1 critical" in response.data
+
+
+def test_dashboard_no_posture_strip_when_no_rag_eligible_widgets(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 14200}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"posture-strip" not in response.data
+
+
+def test_dashboard_posture_strip_hidden_in_edit_mode(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 95}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/dashboard/edit")
+
+    assert response.status_code == 200
+    assert b"posture-strip" not in response.data
