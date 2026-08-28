@@ -1,0 +1,288 @@
+<title>4tExecutive Visibility Roadmap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --surface: #ffffff;
+    --border: #dde3ee;
+    --ink: #1a2233;
+    --muted: #5b6478;
+    --accent: #1c3d78;
+    --accent-soft: #e6ecf7;
+    --accent-fg: #ffffff;
+    --good: #1a7f37;
+    --warn: #a05e00;
+    --crit: #b00020;
+    --code-bg: #eceff6;
+    --t1: #2e6b46;
+    --t2: #8a5a1a;
+    --t3: #1c3d78;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141f;
+      --surface: #181f30;
+      --border: #2a3348;
+      --ink: #e9edf7;
+      --muted: #9aa3b8;
+      --accent: #6f93e0;
+      --accent-soft: #1f2a44;
+      --accent-fg: #0d1626;
+      --good: #4fca7a;
+      --warn: #e0a458;
+      --crit: #ff7a85;
+      --code-bg: #1f2740;
+      --t1: #63c58c;
+      --t2: #dcA45e;
+      --t3: #6f93e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141f;
+    --surface: #181f30;
+    --border: #2a3348;
+    --ink: #e9edf7;
+    --muted: #9aa3b8;
+    --accent: #6f93e0;
+    --accent-soft: #1f2a44;
+    --accent-fg: #0d1626;
+    --good: #4fca7a;
+    --warn: #e0a458;
+    --crit: #ff7a85;
+    --code-bg: #1f2740;
+    --t1: #63c58c;
+    --t2: #dca45e;
+    --t3: #6f93e0;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Public Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  .prose { max-width: 76ch; }
+
+  header.doc { border-bottom: 3px solid var(--accent); padding-bottom: 1.75rem; margin-bottom: 2.5rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 0.75rem;
+  }
+  h1 {
+    font-family: Archivo, "Public Sans", sans-serif;
+    font-size: clamp(1.9rem, 4.5vw, 2.7rem);
+    font-weight: 700; line-height: 1.12; margin: 0 0 0.9rem;
+    text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; font-size: 0.84rem; color: var(--muted); }
+  .meta strong { color: var(--ink); font-weight: 600; }
+
+  h2 {
+    font-family: Archivo, sans-serif; font-weight: 700;
+    font-size: 1.45rem; letter-spacing: -0.01em; line-height: 1.2;
+    margin: 3rem 0 1rem; text-wrap: balance;
+  }
+  h3 {
+    font-family: Archivo, sans-serif; font-weight: 600;
+    font-size: 1.08rem; margin: 2rem 0 0.75rem;
+  }
+  p { margin: 0 0 1rem; }
+  .lede { font-size: 1.06rem; color: var(--muted); }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.84em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+
+  .findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin: 1.5rem 0 0.5rem; }
+  .finding {
+    background: var(--surface); border: 1px solid var(--border);
+    border-top: 3px solid var(--crit); border-radius: 6px; padding: 1rem 1.1rem;
+  }
+  .finding h4 { font-family: Archivo, sans-serif; font-size: 0.95rem; margin: 0 0 0.45rem; font-weight: 600; }
+  .finding p { font-size: 0.86rem; color: var(--muted); margin: 0; }
+
+  .problem { margin: 1.4rem 0; padding-left: 1.1rem; border-left: 3px solid var(--border); }
+  .problem h4 { font-family: Archivo, sans-serif; font-size: 1rem; margin: 0 0 0.4rem; font-weight: 600; }
+  .problem p { margin: 0 0 0.6rem; }
+
+  .tier-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin: 2.75rem 0 0.35rem; }
+  .tier-badge {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent-fg); border-radius: 4px; padding: 0.22em 0.6em;
+  }
+  .tier-badge.t1 { background: var(--t1); }
+  .tier-badge.t2 { background: var(--t2); }
+  .tier-badge.t3 { background: var(--t3); }
+  .tier-head h3 { margin: 0; font-size: 1.15rem; }
+  .tier-sub { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  th {
+    font-family: Archivo, sans-serif; font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+    background: var(--accent-soft); white-space: nowrap;
+  }
+  td.num { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; white-space: nowrap; color: var(--muted); }
+  td strong { font-weight: 600; }
+  .sys { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; white-space: nowrap; }
+
+  ol.order { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+  ol.order li {
+    counter-increment: step; position: relative;
+    padding: 0.55rem 0 0.55rem 2.6rem; border-bottom: 1px solid var(--border);
+  }
+  ol.order li:last-child { border-bottom: none; }
+  ol.order li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0.6rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    background: var(--accent); color: var(--accent-fg);
+    font-family: Archivo, sans-serif; font-weight: 600; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ul.plain { padding-left: 1.2rem; margin: 0.5rem 0 1rem; }
+  ul.plain li { margin-bottom: 0.45rem; }
+
+  .callout {
+    background: var(--accent-soft); border-left: 4px solid var(--accent);
+    border-radius: 0 6px 6px 0; padding: 0.9rem 1.1rem; margin: 1.4rem 0;
+    font-size: 0.94rem;
+  }
+  .callout strong { font-family: Archivo, sans-serif; }
+
+  @media (max-width: 640px) { .wrap { padding: 2rem 1rem 3.5rem; } }
+</style>
+
+<div class="wrap">
+<header class="doc">
+  <p class="eyebrow">GateCrest Labs · 4t Suite · Internal Review</p>
+  <h1>Executive Visibility Review &amp; Recommendations</h1>
+  <div class="meta">
+    <span><strong>Scope</strong> 4tExecutive · 4thealth+ · 4tlog</span>
+    <span><strong>Lens</strong> Director of Infrastructure &amp; Networking, daily driver</span>
+    <span><strong>Date</strong> 2026-08-27</span>
+  </div>
+</header>
+
+<div class="prose">
+<p class="lede">4tExecutive now has motion — charts, time ranges, a real visual identity. This review asks a harder question: does the page answer what a director actually walks in asking? Three findings shaped everything below.</p>
+</div>
+
+<div class="findings">
+  <div class="finding">
+    <h4>The best data never reaches the dashboard</h4>
+    <p>4thealth+ already runs a 26-check device review, 7-check rule hygiene analysis, and PSIRT vulnerability matching. None of it is in the executive API.</p>
+  </div>
+  <div class="finding">
+    <h4>The 4tlog contract is fiction</h4>
+    <p>No summary API, no token auth, no database. <code>faz_health</code> and <code>log_volume_trend</code> are aspirational, while the FAZ APIs that would answer "who isn't logging?" sit unused.</p>
+  </div>
+  <div class="finding">
+    <h4>Some tiles actively mislead</h4>
+    <p><code>firewall_managed_count</code> is an alias of <code>firewalls_total</code>; the backup tile covers the app's own files, not device configs; rule counts are up to 24&nbsp;h stale.</p>
+  </div>
+</div>
+
+<div class="prose">
+<h2>1 · How the current page reads from the director's chair</h2>
+<p>Current widgets: hygiene score, version compliance %, pending config diffs, last backup status, firewalls online / managed, total rules, ADOM count, FortiOS version breakdown, AI usage, host CPU/memory/disk, plus the two 4tlog placeholders.</p>
+
+<div class="problem">
+  <h4>Numbers without judgment</h4>
+  <p>Every widget is a value with no target, threshold, or state. A hygiene score of 71 renders identically to 94. The director's first question — <em>is anything wrong?</em> — requires reading every widget and knowing the targets by heart. Nothing on the page is ever red.</p>
+</div>
+<div class="problem">
+  <h4>The richest posture data in the suite is invisible</h4>
+  <p>The device review engine (HA sync, weak VPN crypto, admin MFA, trusted hosts, default admin, SNMP, logging config…), the rule hygiene engine (shadowed, unhit, unlogged, expired, disabled rules; unused objects), and the PSIRT assessment are exactly the "how exposed are we?" answers a director is asked for — and the product already computes all of them.</p>
+</div>
+<div class="problem">
+  <h4>Redundant and misleading tiles</h4>
+  <p><code>firewall_managed_count</code> duplicates <code>firewalls_total</code> — two widgets, one number. <code>last_backup_status</code> reports 4thealth+'s <em>own config-file backups</em>, but reads as "our firewall configs are backed up." Host CPU/memory/disk of the dashboard host is ops plumbing, not executive signal.</p>
+</div>
+<div class="problem">
+  <h4>The 4tlog side of the story doesn't exist</h4>
+  <p>The contract 4tExecutive documents is unimplemented. Meanwhile 4tlog vendors the FortiAnalyzer specs (<code>logview/logstats</code>, <code>eventmgmt</code>) that would answer the highest-value logging question a director has: <em>which firewalls are not sending logs right now?</em> A silent device is a blind spot during an incident.</p>
+</div>
+<div class="problem">
+  <h4>Data trust gaps under the hood</h4>
+  <p>One shared <code>status</code> and <code>last_updated</code> cover fields whose real freshness ranges from live to 24 hours; a hygiene-sweep error masks a healthy device sweep. Caches are in-memory and per-worker, so consecutive polls can disagree and a restart blanks the API. A product sold on "one pane of truth" needs the pane to be honest about staleness.</p>
+</div>
+
+<h2>2 · Recommendations</h2>
+</div>
+
+<div class="tier-head"><span class="tier-badge t1">Tier 1</span><h3>Presentation only — 4tExecutive changes, data already flowing</h3></div>
+<p class="tier-sub">Biggest perceived-value-per-effort in this document. One release.</p>
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Recommendation</th><th>Detail</th></tr>
+  <tr><td class="num">1.1</td><td><strong>Threshold-driven RAG states on every widget</strong></td><td>Configurable green/amber/red thresholds per widget type, with sane defaults (version compliance ≥95 green, ≥85 amber). Colored border or status dot per card. This one change converts the page from a report into a monitor.</td></tr>
+  <tr><td class="num">1.2</td><td><strong>A posture strip at the top</strong></td><td>One row above the range selector: overall state (worst-of RAG), count of widgets in amber/red, data-freshness indicator. The director's five-second answer.</td></tr>
+  <tr><td class="num">1.3</td><td><strong>Merge availability into one widget</strong></td><td>Replace <em>Firewalls Online</em> + <em>Firewalls Managed</em> with a single <strong>Fleet Availability</strong> widget: online / total (percent), charting the percentage. Drop the alias field.</td></tr>
+  <tr><td class="num">1.4</td><td><strong>Relabel or demote the backup widget</strong></td><td>Rename to "App Config Backup" until real device-backup data exists (3.4), or pull it off the default layout. Never imply fleet backups are covered when they aren't measured.</td></tr>
+  <tr><td class="num">1.5</td><td><strong>Move host CPU/memory/disk to Admin</strong></td><td>Keep collecting; stop spending default-dashboard real estate on the dashboard's own container.</td></tr>
+  <tr><td class="num">1.6</td><td><strong>Delta annotations on charts</strong></td><td>"▲ +3 vs. start of range" beside the current value. Trend direction is the executive's unit of change.</td></tr>
+</table>
+</div>
+
+<div class="tier-head"><span class="tier-badge t2">Tier 2</span><h3>New API fields from data 4thealth+ already computes</h3></div>
+<p class="tier-sub">No new collectors — aggregation, persistence, and exposure of existing engines.</p>
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Recommendation</th><th>4thealth+ work</th><th>4tExecutive work</th></tr>
+  <tr><td class="num">2.1</td><td><strong>Device Review (CIS) rollup</strong> — the flagship posture widget</td><td>Aggregate per-device results into fleet numbers: devices reviewed, devices with failures, findings by severity, top 3 failing checks. Persist the rollup (today it only materializes inside scheduled email runs).</td><td>"Configuration Posture" widget (2×2): pass/fail breakdown + top failing checks, trended.</td></tr>
+  <tr><td class="num">2.2</td><td><strong>Rule hygiene rollup</strong></td><td>Sum the 7 hygiene checks + unused objects into <code>rule_findings_total</code> and <code>rule_findings_by_type</code>.</td><td>"Rule Hygiene" widget: findings trend + breakdown. Answers <em>is our policy base getting cleaner or dirtier?</em></td></tr>
+  <tr><td class="num">2.3</td><td><strong>PSIRT exposure</strong></td><td>The PSIRT module already matches advisories to fleet versions. Expose critical/high device counts and top advisory.</td><td>"Vulnerability Exposure" widget — red when critical &gt; 0. The widget a director shows <em>their</em> boss.</td></tr>
+  <tr><td class="num">2.4</td><td><strong>Per-field freshness + honest status</strong></td><td>Per-field-group <code>collected_at</code>; separate hygiene-sweep status from device-sweep status.</td><td>Color the "as of" line amber past 2× the expected interval.</td></tr>
+  <tr><td class="num">2.5</td><td><strong>AI usage attribution</strong></td><td>Add <code>feature</code> and <code>user</code> columns to <code>ai_usage.db</code>; expose by-feature rollups, token totals, failures; add retention.</td><td>Optional by-feature breakdown. Cost-per-feature is what makes an AI line item defensible.</td></tr>
+  <tr><td class="num">2.6</td><td><strong>Fix <code>rule_count_total</code> cadence</strong></td><td>Move the summary job from daily-at-01:00 to hourly. A 24-hour-stale number on a 15-minute dashboard undermines trust in everything else.</td><td>None.</td></tr>
+  <tr><td class="num">2.7</td><td><strong>Version EOL flagging</strong></td><td>Annotate <code>version_breakdown</code> with end-of-support flags from a small static table.</td><td>Bar chart colors EOL versions red; compliance becomes self-explanatory.</td></tr>
+</table>
+</div>
+
+<div class="tier-head"><span class="tier-badge t3">Tier 3</span><h3>New collectors and larger builds</h3></div>
+<p class="tier-sub">Roadmap items — each one adds data no system collects today.</p>
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Recommendation</th><th>System</th><th>Detail</th></tr>
+  <tr><td class="num">3.1</td><td><strong>Implement the 4tlog external summary API</strong></td><td class="sys">4tlog</td><td>Bearer-token <code>/external/api/executive/summary</code> matching the 4thealth+ pattern. Minimum payload from the existing health cache: targets total/healthy, numeric FAZ disk %. Unblocks the two widgets 4tExecutive already ships.</td></tr>
+  <tr><td class="num">3.2</td><td><strong>Silent-device detection</strong></td><td class="sys">4tlog</td><td>Call FAZ <code>logview/logstats</code> (spec vendored, never invoked) for last-log-time and rate per device; expose devices logging vs. silent. <strong>Highest-value new metric in this list</strong> — logging blind spots are invisible in all three apps today. Needs a small SQLite layer so trends survive restarts.</td></tr>
+  <tr><td class="num">3.3</td><td><strong>Log volume trend for real</strong></td><td class="sys">4tlog</td><td>Same logstats collection, aggregated fleet-wide per interval and persisted — a numeric series 4tExecutive charts natively, replacing the aspirational string.</td></tr>
+  <tr><td class="num">3.4</td><td><strong>Device config backup age</strong></td><td class="sys">4thealth+</td><td>FortiManager revision history per device; expose devices with fresh vs. stale (&gt;N days) backups. Makes the backup widget honest (see 1.4).</td></tr>
+  <tr><td class="num">3.5</td><td><strong>Certificate expiry</strong></td><td class="sys">4thealth+</td><td>Admin/SSL certs per device; expiring-30d and expired counts. Certificate surprises are a classic director embarrassment; cheap to collect from the API already in use.</td></tr>
+  <tr><td class="num">3.6</td><td><strong>License / support contract expiry</strong></td><td class="sys">4thealth+</td><td>FortiCare/FortiGuard contract data via FMG; contracts expiring within 90 days. The one widget that talks to procurement.</td></tr>
+  <tr><td class="num">3.7</td><td><strong>Composite Security Posture Score</strong></td><td class="sys">both</td><td>Weighted composite of hygiene, device-review pass rate, PSIRT exposure, version compliance — weights visible and configurable. Build only after 2.1–2.3 exist; a composite over missing inputs is theater.</td></tr>
+  <tr><td class="num">3.8</td><td><strong>Cache persistence &amp; consistency</strong></td><td class="sys">4thealth+</td><td>Back the executive-summary caches with SQLite (or pin sweeps to one worker) so restarts don't blank the API and multi-worker deployments answer consistently. A product requirement more than a feature.</td></tr>
+</table>
+</div>
+
+<div class="prose">
+<h2>3 · Suggested build order</h2>
+<ol class="order">
+  <li><strong>Tier 1 complete</strong> (one 4tExecutive release) — RAG thresholds, posture strip, widget cleanup. Biggest perceived value per effort.</li>
+  <li><strong>2.1 + 2.3</strong> — device review rollup and PSIRT exposure turn on the posture story with data that already exists.</li>
+  <li><strong>3.1 + 3.2</strong> — the 4tlog API plus silent-device detection brings the third system into the pane and adds the standout differentiator.</li>
+  <li><strong>2.2, 2.4–2.7</strong> as a hardening and depth wave.</li>
+  <li><strong>3.4–3.8</strong> as roadmap items, the composite score (3.7) last.</li>
+</ol>
+
+<h2>4 · Contract discipline — applies to every tier</h2>
+<ul class="plain">
+  <li>Every new field lands in <code>docs/integrations.md</code> with type, null semantics, and freshness. The existing "missing key ⇒ No data yet" convention holds up well — keep it.</li>
+  <li>Version the executive payload (a <code>schema_version</code> field) before third parties integrate.</li>
+  <li>4tExecutive never crashes on a malformed field — the recent null and non-numeric guards set the right precedent; extend that stance to every new field.</li>
+</ul>
+
+<div class="callout"><strong>Bottom line:</strong> the suite already computes a director-grade posture story — device review, rule hygiene, PSIRT. The gap is almost entirely exposure and judgment (thresholds), not collection. Tier 1 plus two Tier 2 items delivers most of the executive value in this document.</div>
+</div>
+</div>
