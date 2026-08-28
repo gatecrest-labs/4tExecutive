@@ -238,7 +238,7 @@ def test_dashboard_renders_ai_usage_widget_as_line_chart(client, tmp_path, monke
         "2026-08-27T10:00:00Z",
     )
 
-    response = client.get("/")
+    response = client.get("/?range=30d")
 
     assert response.status_code == 200
     assert b"chart-line" in response.data
@@ -318,7 +318,7 @@ def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path
     )
     metrics_db.write_snapshot("s1", "summary", {"firewall_managed_count": 128}, "2026-08-27T10:00:00Z")
 
-    response = client.get("/")
+    response = client.get("/?range=30d")
 
     assert response.status_code == 200
     assert b"chart-line" in response.data
