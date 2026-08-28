@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from math import ceil
+from datetime import UTC, datetime, timedelta
 
 from app.metrics_db import get_history, get_latest
 from app.sources import list_sources
@@ -250,7 +249,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         }
 
     range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
-    since = (datetime.now(timezone.utc) - range_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(UTC) - range_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
     history = get_history(source_id, entry["metric_type"], since)
     if not history:
         return {
@@ -265,16 +264,18 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     extra_label = None
     if widget_instance["type"] == "4thealth.ai_usage_24h":
         points = [
-            (h["collected_at"], h["value"].get("ai_usage_24h", {}).get("ai_connection_count_24h"))
+            (h["collected_at"], (h["value"].get("ai_usage_24h") or {}).get("ai_connection_count_24h"))
             for h in history
         ]
-        cost = history[-1]["value"].get("ai_usage_24h", {}).get("ai_estimated_cost_24h_usd")
+        cost = (history[-1]["value"].get("ai_usage_24h") or {}).get("ai_estimated_cost_24h_usd")
         if cost is not None:
             extra_label = f"${cost:.2f} est. cost (24h)"
     else:
         points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
 
-    points = [(t, v) for t, v in points if v is not None]
+    points = [
+        (t, v) for t, v in points if v is not None and isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
     points = _downsample(points)
     values = [v for _, v in points]
 

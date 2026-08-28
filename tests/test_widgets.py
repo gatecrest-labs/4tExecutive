@@ -1,17 +1,23 @@
 """Tests for the widget catalog and data lookup."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 import app.sources as sources_module
 from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
-from app.widgets import WIDGET_CATALOG, default_layout, get_widget_value, get_widget_series, _downsample
+from app.widgets import (
+    WIDGET_CATALOG,
+    _downsample,
+    default_layout,
+    get_widget_series,
+    get_widget_value,
+)
 
 
 def _iso(minutes_ago: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    return (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
 
 
 @pytest.fixture(autouse=True)

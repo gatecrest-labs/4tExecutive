@@ -273,7 +273,7 @@ def test_dashboard_defaults_to_1d_range(client, tmp_path, monkeypatch):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'class="range-btn active"' in response.data or b"1d" in response.data
+    assert b'class="range-btn active">1d<' in response.data
 
 
 def test_dashboard_range_query_param_sets_cookie(client, tmp_path, monkeypatch):
@@ -293,6 +293,7 @@ def test_dashboard_invalid_range_falls_back_to_default(client, tmp_path, monkeyp
     response = client.get("/?range=bogus")
 
     assert response.status_code == 200
+    assert b'class="range-btn active">1d<' in response.data
 
 
 def test_dashboard_uses_range_cookie_when_no_query_param(client, tmp_path, monkeypatch):
@@ -303,6 +304,7 @@ def test_dashboard_uses_range_cookie_when_no_query_param(client, tmp_path, monke
     response = client.get("/")
 
     assert response.status_code == 200
+    assert b'class="range-btn active">30d<' in response.data
 
 
 def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path, monkeypatch):
