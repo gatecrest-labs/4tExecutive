@@ -7,6 +7,7 @@
   --accent: #1c3d78;
   --accent-fg: #ffffff;
   --status-ok: #1a7f37;
+  --status-amber: #b98900;
   --status-failed: #b00020;
   --status-pending: #8a939c;
 }
@@ -20,6 +21,7 @@
   --accent: #6f93e0;
   --accent-fg: #0d1626;
   --status-ok: #3fca6c;
+  --status-amber: #e0a940;
   --status-failed: #ff6b6b;
   --status-pending: #9aa3b8;
 }
@@ -112,6 +114,10 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .widget-1x1 { grid-column: span 1; grid-row: span 1; }
 .widget-2x1 { grid-column: span 2; grid-row: span 1; }
 .widget-2x2 { grid-column: span 2; grid-row: span 2; }
+
+.rag-green { border-left: 4px solid var(--status-ok); }
+.rag-amber { border-left: 4px solid var(--status-amber); }
+.rag-red { border-left: 4px solid var(--status-failed); }
 
 .widget-value {
   margin: 0;

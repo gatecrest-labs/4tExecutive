@@ -19,7 +19,7 @@
 {% endif %}
 <div class="widget-grid">
   {% for widget in widgets %}
-    <div class="widget widget-{{ widget.size|default('1x1') }}">
+    <div id="widget-{{ loop.index }}" class="widget widget-{{ widget.size|default('1x1') }}{% if widget.data and widget.data.rag %} rag-{{ widget.data.rag }}{% endif %}">
       <h3>{{ widget.label }}</h3>
       <p class="widget-source">{{ widget.source_name }}</p>
       {% if widget.data and widget.data.chart == 'line' %}

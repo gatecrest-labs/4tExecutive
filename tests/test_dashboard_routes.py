@@ -323,3 +323,37 @@ def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path
     assert response.status_code == 200
     assert b"chart-line" in response.data
     assert b"128" in response.data
+
+
+def test_dashboard_renders_rag_class_on_widget_card(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 40}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"rag-red" in response.data
+
+
+def test_dashboard_no_rag_class_for_informational_widget(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 14200}, "2026-08-27T10:00:00Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"rag-" not in response.data
