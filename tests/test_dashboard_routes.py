@@ -1,10 +1,15 @@
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 import app.groups as groups_module
 import app.sources as sources_module
 from app import metrics_db
+
+
+def _iso(minutes_ago: int) -> str:
+    return (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
 
 
 @pytest.fixture(autouse=True)
@@ -369,7 +374,7 @@ def test_dashboard_renders_fleet_availability_widget(client, tmp_path, monkeypat
         [{"type": "4thealth.fleet_availability", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
     )
     metrics_db.write_snapshot(
-        "s1", "summary", {"firewall_online_count": 9, "firewall_managed_count": 10}, "2026-08-27T10:00:00Z"
+        "s1", "summary", {"firewall_online_count": 9, "firewall_managed_count": 10}, _iso(5)
     )
 
     response = client.get("/?range=30d")
@@ -389,8 +394,8 @@ def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
         "alice",
         [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
     )
-    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, "2026-08-01T10:00:00Z")
-    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 130}, "2026-08-27T10:00:00Z")
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(60 * 24 * 20))
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 130}, _iso(5))
 
     response = client.get("/?range=30d")
 

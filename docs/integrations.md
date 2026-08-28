@@ -51,12 +51,20 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `hygiene_score`               | Hygiene Score                  |
 | `version_compliance_pct`      | Device Version Compliance %    |
 | `pending_config_diff_count`   | Pending Config Diffs           |
-| `last_backup_status`          | Last Backup Status             |
+| `last_backup_status`          | App Config Backup              |
 | `firewall_online_count`       | Firewalls Online               |
 | `firewall_managed_count`      | Firewalls Managed              |
 | `rule_count_total`            | Total Rules                    |
 | `adom_count`                  | ADOMs Configured                |
 | `version_breakdown`           | FortiOS Versions (table)       |
+
+`firewall_online_count` and `firewall_managed_count` are still the two raw
+fields a source reports, and both remain individually addable widgets (e.g.
+in a saved custom layout), but the *default* dashboard no longer shows them
+as separate tiles — it computes both fields together into one "Fleet
+Availability" widget (`online / managed` as a percentage, with RAG
+thresholds) and shows that instead. A source only needs to keep reporting
+both raw fields; nothing else changes on the source side.
 
 **`4thealth-plus` AI usage fields** (optional — omit entirely if AI isn't
 enabled on that instance):

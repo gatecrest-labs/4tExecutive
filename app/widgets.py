@@ -233,11 +233,14 @@ def _rag_state(value, thresholds: dict) -> str | None:
     return None
 
 
-def _attach_rag(widget_type: str, entry: dict, result: dict) -> dict:
+def _attach_rag(widget_type: str, entry: dict, result: dict, *, line_rag_value=None) -> dict:
     """Add a "rag" key to result when the widget type has RAG thresholds and a classifiable value.
 
     Reads the value to classify from result["value"] (get_widget_value shape)
-    or, for line charts, the most recent point in result["points"].
+    or, for line charts, line_rag_value — the caller's raw latest numeric
+    reading from before any downsampling averaged it away, since a
+    bucket-averaged point can mask (or fabricate) a threshold crossing that
+    the actual latest snapshot doesn't show.
     """
     thresholds = get_thresholds(widget_type, entry.get("rag"))
     if thresholds is None:
@@ -245,7 +248,7 @@ def _attach_rag(widget_type: str, entry: dict, result: dict) -> dict:
     if "value" in result:
         value = result["value"]
     elif result.get("chart") == "line":
-        value = result["points"][-1][1] if result["points"] else None
+        value = line_rag_value
     else:
         return result
     result["rag"] = _rag_state(value, thresholds)
@@ -348,9 +351,10 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     points = [
         (t, v) for t, v in points if v is not None and isinstance(v, (int, float)) and not isinstance(v, bool)
     ]
+    latest_numeric_value = points[-1][1] if points else None
     points = _downsample(points)
     values = [v for _, v in points]
-    delta = (values[-1] - values[0]) if len(values) >= 2 else None
+    delta = round(values[-1] - values[0], 2) if len(values) >= 2 else None
 
     return _attach_rag(
         widget_instance["type"],
@@ -364,6 +368,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             "delta": delta,
             "collected_at": history[-1]["collected_at"],
         },
+        line_rag_value=latest_numeric_value,
     )
 
 

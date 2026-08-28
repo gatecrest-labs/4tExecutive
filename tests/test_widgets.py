@@ -490,6 +490,32 @@ def test_get_widget_series_fleet_availability_skips_snapshots_missing_a_side():
     assert len(result["points"]) == 1
 
 
+def test_get_widget_series_fleet_availability_rag_uses_raw_latest_not_downsampled_average():
+    for i in range(97):
+        write_snapshot(
+            "s1", "summary", {"firewall_online_count": 10, "firewall_managed_count": 10}, _iso(300 - i)
+        )
+    # A transient dip a few minutes ago, followed by a fully healthy latest reading. Once
+    # bucket-averaged together by _downsample, this pair would drag the last bucket's average
+    # down to 75% (red), even though the raw latest snapshot is 100% (green).
+    write_snapshot("s1", "summary", {"firewall_online_count": 5, "firewall_managed_count": 10}, _iso(3))
+    write_snapshot("s1", "summary", {"firewall_online_count": 10, "firewall_managed_count": 10}, _iso(1))
+
+    result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "30d")
+
+    assert len(result["points"]) <= 80
+    assert result["rag"] == "green"
+
+
+def test_get_widget_series_fleet_availability_delta_rounded_for_float_values():
+    write_snapshot("s1", "summary", {"firewall_online_count": 8, "firewall_managed_count": 10}, _iso(30))
+    write_snapshot("s1", "summary", {"firewall_online_count": 5, "firewall_managed_count": 6}, _iso(5))
+
+    result = get_widget_series({"type": "4thealth.fleet_availability", "source_instance": "s1"}, "1d")
+
+    assert result["delta"] == 3.3
+
+
 def test_get_widget_series_line_includes_delta_when_two_or_more_points():
     write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(600))
     write_snapshot("s1", "summary", {"rule_count_total": 130}, _iso(5))
