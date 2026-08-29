@@ -227,6 +227,27 @@ def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tm
     assert b"No data yet" in response.data
 
 
+def test_dashboard_colors_eol_version_bars_red(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.version_breakdown", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {"version_breakdown": {"7.4.5": {"count": 12, "eol": False}, "6.4.2": {"count": 3, "eol": True}}},
+        "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"var(--status-failed)" in response.data
+
+
 def test_dashboard_renders_ai_usage_widget_as_line_chart(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)

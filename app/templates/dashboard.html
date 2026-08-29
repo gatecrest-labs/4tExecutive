@@ -46,7 +46,7 @@
         {% endif %}
       {% elif widget.data and widget.data.chart == 'bar' %}
         {% if widget.data.data %}
-          {{ charts.bar_chart(widget.data.data) }}
+          {{ charts.bar_chart(widget.data.data, widget.data.eol_versions|default([])) }}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
         {% else %}
           <p class="widget-empty">No data yet</p>

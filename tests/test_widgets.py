@@ -403,7 +403,42 @@ def test_get_widget_series_bar_no_snapshot_returns_empty_chart():
 
     result = get_widget_series(widget, "1d")
 
-    assert result == {"chart": "bar", "data": {}, "collected_at": None}
+    assert result == {"chart": "bar", "data": {}, "eol_versions": [], "collected_at": None}
+
+
+def test_get_widget_series_version_breakdown_handles_new_eol_shape():
+    write_snapshot(
+        "s1", "summary",
+        {"version_breakdown": {"7.4.5": {"count": 12, "eol": False}, "6.4.2": {"count": 3, "eol": True}}},
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12, "6.4.2": 3}
+    assert result["eol_versions"] == ["6.4.2"]
+
+
+def test_get_widget_series_version_breakdown_handles_old_flat_shape():
+    write_snapshot(
+        "s1", "summary", {"version_breakdown": {"7.4.5": 12, "6.4.2": 3}}, "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12, "6.4.2": 3}
+    assert result["eol_versions"] == []
+
+
+def test_get_widget_series_version_breakdown_empty_when_no_data():
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert result["eol_versions"] == []
 
 
 def test_get_widget_series_ai_usage_charts_connection_count_and_carries_cost():

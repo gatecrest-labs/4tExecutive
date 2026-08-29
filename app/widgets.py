@@ -296,15 +296,32 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     if chart_type == "bar":
         latest = get_latest(source_id, entry["metric_type"])
         if latest is None:
-            return _attach_rag(widget_instance["type"], entry, {"chart": "bar", "data": {}, "collected_at": None})
+            empty = {"chart": "bar", "data": {}, "collected_at": None}
+            if widget_instance["type"] == "4thealth.version_breakdown":
+                empty["eol_versions"] = []
+            return _attach_rag(widget_instance["type"], entry, empty)
+
+        raw = latest["value"].get(entry["field"]) or {}
+        if widget_instance["type"] == "4thealth.version_breakdown":
+            data = {}
+            eol_versions = []
+            for version, entry_value in raw.items():
+                if isinstance(entry_value, dict):
+                    data[version] = entry_value.get("count")
+                    if entry_value.get("eol"):
+                        eol_versions.append(version)
+                else:
+                    data[version] = entry_value
+            return _attach_rag(
+                widget_instance["type"],
+                entry,
+                {"chart": "bar", "data": data, "eol_versions": eol_versions, "collected_at": latest["collected_at"]},
+            )
+
         return _attach_rag(
             widget_instance["type"],
             entry,
-            {
-                "chart": "bar",
-                "data": latest["value"].get(entry["field"]) or {},
-                "collected_at": latest["collected_at"],
-            },
+            {"chart": "bar", "data": raw, "collected_at": latest["collected_at"]},
         )
 
     range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
