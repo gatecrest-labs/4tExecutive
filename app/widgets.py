@@ -374,12 +374,15 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
                 "max": None,
                 "extra_label": None,
                 "delta": None,
+                "breakdown": None,
+                "by_feature": None,
                 "collected_at": None,
             },
         )
 
     extra_label = None
     breakdown = None
+    by_feature = None
     if widget_instance["type"] == "4thealth.ai_usage_24h":
         points = [
             (h["collected_at"], (h["value"].get("ai_usage_24h") or {}).get("ai_connection_count_24h"))
@@ -388,6 +391,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         cost = (history[-1]["value"].get("ai_usage_24h") or {}).get("ai_estimated_cost_24h_usd")
         if cost is not None:
             extra_label = f"${cost:.2f} est. cost (24h)"
+        by_feature = history[-1]["value"].get("ai_usage_by_feature")
     elif widget_instance["type"] == "4thealth.fleet_availability":
         points = []
         for h in history:
@@ -427,6 +431,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             "extra_label": extra_label,
             "delta": delta,
             "breakdown": breakdown,
+            "by_feature": by_feature,
             "collected_at": history[-1]["collected_at"],
         },
         line_rag_value=latest_numeric_value,

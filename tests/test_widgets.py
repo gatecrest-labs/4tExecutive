@@ -379,6 +379,8 @@ def test_get_widget_series_line_no_history_returns_empty_chart():
         "max": None,
         "extra_label": None,
         "delta": None,
+        "breakdown": None,
+        "by_feature": None,
         "collected_at": None,
     }
 
@@ -672,3 +674,32 @@ def test_get_widget_series_rule_hygiene_skips_snapshots_without_rollup():
     result = get_widget_series(widget, "30d")
 
     assert len(result["points"]) == 1
+
+
+def test_get_widget_series_ai_usage_includes_by_feature_breakdown_when_present():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41},
+            "ai_usage_by_feature": {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}},
+        },
+        _iso(5),
+    )
+    widget = {"type": "4thealth.ai_usage_24h", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["by_feature"] == {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}}
+
+
+def test_get_widget_series_ai_usage_by_feature_absent_when_not_in_payload():
+    write_snapshot(
+        "s1", "summary",
+        {"ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.ai_usage_24h", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["by_feature"] is None

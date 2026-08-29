@@ -549,3 +549,27 @@ def test_dashboard_posture_strip_hidden_in_edit_mode(client, tmp_path, monkeypat
 
     assert response.status_code == 200
     assert b"posture-strip" not in response.data
+
+
+def test_dashboard_renders_ai_usage_by_feature(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.ai_usage_24h", "source_instance": "s1", "size": "2x2", "date_range": "1d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41},
+            "ai_usage_by_feature": {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}},
+        },
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"device_review_summary" in response.data
