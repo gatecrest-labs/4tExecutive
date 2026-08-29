@@ -137,7 +137,16 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
 
     fourthealth_widgets = [w for w in layout if w["type"].startswith("4thealth.")]
     types = {w["type"] for w in fourthealth_widgets}
-    excluded = {"4thealth.ai_usage_24h", "4thealth.firewall_online_count", "4thealth.firewall_managed_count"}
+    # ai_usage_24h, device_review_posture and rule_hygiene are only added to the
+    # auto-generated default when the source's latest snapshot actually carries
+    # the corresponding payload field — no snapshot here, so none of them appear.
+    excluded = {
+        "4thealth.ai_usage_24h",
+        "4thealth.device_review_posture",
+        "4thealth.rule_hygiene",
+        "4thealth.firewall_online_count",
+        "4thealth.firewall_managed_count",
+    }
     expected = {
         t for t, e in WIDGET_CATALOG.items()
         if e["source_system"] == "4thealth" and t not in excluded
@@ -256,6 +265,45 @@ def test_default_layout_includes_ai_widget_when_ai_enabled_true():
     ai_widgets = [w for w in layout if w["type"] == "4thealth.ai_usage_24h"]
     assert len(ai_widgets) == 1
     assert ai_widgets[0]["source_instance"] == "4th-1"
+
+
+def test_default_layout_excludes_tier2_widgets_when_source_has_no_rollups():
+    """A 4thealth+ release without Tier 2 must not get two always-empty tiles."""
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot("4th-1", "summary", {"hygiene_score": 92}, "2026-08-27T10:00:00Z")
+
+    types = {w["type"] for w in default_layout()}
+
+    assert "4thealth.device_review_posture" not in types
+    assert "4thealth.rule_hygiene" not in types
+
+
+def test_default_layout_includes_device_review_posture_when_rollup_present():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot(
+        "4th-1", "summary",
+        {"device_review": {"devices_reviewed": 10, "devices_with_failures": 1}},
+        "2026-08-27T10:00:00Z",
+    )
+
+    widgets = [w for w in default_layout() if w["type"] == "4thealth.device_review_posture"]
+
+    assert len(widgets) == 1
+    assert widgets[0]["source_instance"] == "4th-1"
+
+
+def test_default_layout_includes_rule_hygiene_when_rollup_present():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot(
+        "4th-1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 100, "rule_findings_by_type": {"shadow": 4}}},
+        "2026-08-27T10:00:00Z",
+    )
+
+    widgets = [w for w in default_layout() if w["type"] == "4thealth.rule_hygiene"]
+
+    assert len(widgets) == 1
+    assert widgets[0]["source_instance"] == "4th-1"
 
 
 def test_catalog_contains_host_metric_widgets():

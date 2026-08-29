@@ -98,7 +98,14 @@ a specific layout is `save_layout(username, widgets)` directly (e.g. via
 (`app/widgets.py`) generates one widget per `WIDGET_CATALOG` entry × each
 *enabled* source whose `system` matches that entry's `source_system` — so
 a user with no saved layout sees everything currently configured instead
-of a blank dashboard. `app/routes/dashboard_routes.py`'s `index()`/`edit()`
+of a blank dashboard. A few entries are skipped: host metrics
+(`4texecutive.*`, which live on Admin > System) and the two aliased firewall
+counters always, plus AI Usage, Configuration Posture and Rule Hygiene
+unless the source's latest snapshot actually reports `ai_enabled: true` /
+`device_review` / `rule_hygiene` respectively — a source on an older release
+that never sends those fields shouldn't get permanently empty tiles. Saved
+layouts containing any of them still render normally.
+`app/routes/dashboard_routes.py`'s `index()`/`edit()`
 use this as a fallback (`get_layout(username) or default_layout()`); a
 user with any saved layout, even a single widget, always sees exactly
 that instead — the default only fills in for someone who's saved nothing

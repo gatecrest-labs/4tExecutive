@@ -230,13 +230,18 @@ def default_layout() -> list[dict]:
     (4texecutive.*) are excluded — they live on the Admin > System page,
     not the executive dashboard.
 
-    The AI usage widget is the one exception — it's only included when the
-    source's latest snapshot reports ai_enabled: true, since most 4thealth
+    Three widgets are conditional. The AI usage widget is only included when
+    the source's latest snapshot reports ai_enabled: true, since most 4thealth
     instances won't have AI turned on and an always-empty tile isn't useful
-    default clutter. A user who manually saves a layout containing it still
-    sees it regardless (falls back to "No data yet" like any other widget
-    with a missing field) — this skip only affects the auto-generated
-    default.
+    default clutter. The Tier 2 rollup widgets (device_review_posture,
+    rule_hygiene) are only included when the latest snapshot actually carries
+    that rollup — a 4thealth+ release that hasn't shipped Tier 2 would
+    otherwise get two tiles reading "No data yet" forever, changing its
+    dashboard for the worse just because 4tExecutive upgraded.
+
+    A user who manually saves a layout containing any of them still sees it
+    regardless (falls back to "No data yet" like any other widget with a
+    missing field) — these skips only affect the auto-generated default.
     """
     widgets = []
     for widget_type, entry in WIDGET_CATALOG.items():
@@ -248,6 +253,10 @@ def default_layout() -> list[dict]:
             if widget_type == "4thealth.ai_usage_24h":
                 latest = get_latest(source["id"], entry["metric_type"])
                 if latest is None or not latest["value"].get("ai_enabled"):
+                    continue
+            elif widget_type in ("4thealth.device_review_posture", "4thealth.rule_hygiene"):
+                latest = get_latest(source["id"], entry["metric_type"])
+                if latest is None or latest["value"].get(entry["field"]) is None:
                     continue
             widgets.append(
                 {
