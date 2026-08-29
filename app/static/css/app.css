@@ -119,6 +119,9 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .rag-amber { border-left: 4px solid var(--status-amber); }
 .rag-red { border-left: 4px solid var(--status-failed); }
 
+.widget-stale { opacity: 0.85; }
+.widget-stale .widget-updated { color: var(--status-amber); }
+
 .widget-value {
   margin: 0;
   font-size: 1.6rem;
@@ -140,6 +143,9 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .widget-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .widget-table td { padding: 0.15rem 0; border: none; color: var(--text); }
 .widget-table td:last-child { text-align: right; font-weight: 600; }
+
+.widget-breakdown { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.75rem; color: var(--text-muted); }
+.widget-breakdown li { margin: 0.1rem 0; }
 
 .auth-page {
   min-height: calc(100vh - 60px);

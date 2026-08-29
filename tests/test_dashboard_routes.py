@@ -227,6 +227,57 @@ def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tm
     assert b"No data yet" in response.data
 
 
+def test_dashboard_renders_device_review_posture_widget(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.device_review_posture", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 42, "devices_with_failures": 7,
+                "findings_by_severity": {"critical": 1, "high": 3, "medium": 9, "low": 4},
+                "top_failing_checks": [{"check": "default_admin", "count": 5}],
+                "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Configuration Posture" in response.data
+    assert b"default_admin" in response.data
+    assert b"rag-red" in response.data
+
+
+def test_dashboard_colors_eol_version_bars_red(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.version_breakdown", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {"version_breakdown": {"7.4.5": {"count": 12, "eol": False}, "6.4.2": {"count": 3, "eol": True}}},
+        "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"var(--status-failed)" in response.data
+
+
 def test_dashboard_renders_ai_usage_widget_as_line_chart(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
@@ -403,6 +454,28 @@ def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
     assert "▲ +30".encode() in response.data
 
 
+def test_dashboard_renders_rule_hygiene_breakdown(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_hygiene", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {"shadow": 5, "unhit": 65}}},
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Rule Hygiene" in response.data
+    assert b"shadow" in response.data
+
+
 def test_dashboard_posture_strip_ok_when_all_green(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
@@ -461,6 +534,51 @@ def test_dashboard_no_posture_strip_when_no_rag_eligible_widgets(client, tmp_pat
     assert b"posture-strip" not in response.data
 
 
+def test_dashboard_posture_freshness_ignores_old_device_review_rollup_timestamp(
+    client, tmp_path, monkeypatch
+):
+    """A 3-hour-old device-review rollup must not make the posture strip read stale.
+
+    The rollup timestamp is by design up to 48h old; posture freshness is
+    about 4tExecutive's poll cadence, so it must aggregate poll times only.
+    """
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    sources_module.add_source(
+        id="s1", system="4thealth", name="A", base_url="https://a", token="t",
+        poll_interval_minutes=15,
+    )
+    save_layout(
+        "alice",
+        [
+            {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"},
+            {"type": "4thealth.device_review_posture", "source_instance": "s1", "size": "2x2", "date_range": "30d"},
+        ],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "hygiene_score": 95,
+            "device_review": {
+                "devices_reviewed": 10, "devices_with_failures": 0,
+                "findings_by_severity": {"critical": 0},
+                "top_failing_checks": [],
+                "collected_at": _iso(180),
+            },
+        },
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"posture-strip" in response.data
+    assert b"posture-stale" not in response.data
+    assert b"oldest data: 5 min ago" in response.data
+
+
 def test_dashboard_posture_strip_hidden_in_edit_mode(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
@@ -476,3 +594,47 @@ def test_dashboard_posture_strip_hidden_in_edit_mode(client, tmp_path, monkeypat
 
     assert response.status_code == 200
     assert b"posture-strip" not in response.data
+
+
+def test_dashboard_renders_ai_usage_by_feature(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.ai_usage_24h", "source_instance": "s1", "size": "2x2", "date_range": "1d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41},
+            "ai_usage_by_feature": {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}},
+        },
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"device_review_summary" in response.data
+
+
+def test_dashboard_stale_widget_gets_stale_css_class(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    metrics_db.write_snapshot(
+        "s1", "summary", {"hygiene_score": 90, "hygiene_sweep_collected_at": old_ts}, "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"widget-stale" in response.data

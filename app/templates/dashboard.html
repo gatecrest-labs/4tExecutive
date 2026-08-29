@@ -30,7 +30,7 @@
 {% endif %}
 <div class="widget-grid">
   {% for widget in widgets %}
-    <div id="widget-{{ loop.index }}" class="widget widget-{{ widget.size|default('1x1') }}{% if widget.data and widget.data.rag %} rag-{{ widget.data.rag }}{% endif %}">
+    <div id="widget-{{ loop.index }}" class="widget widget-{{ widget.size|default('1x1') }}{% if widget.data and widget.data.rag %} rag-{{ widget.data.rag }}{% endif %}{% if widget.data and widget.data.stale %} widget-stale{% endif %}">
       <h3>{{ widget.label }}</h3>
       <p class="widget-source">{{ widget.source_name }}</p>
       {% if widget.data and widget.data.chart == 'line' %}
@@ -40,14 +40,38 @@
           {% if widget.data.delta is not none %}
             <p class="widget-delta">{% if widget.data.delta > 0 %}▲ +{{ widget.data.delta }}{% elif widget.data.delta < 0 %}▼ {{ widget.data.delta }}{% else %}— 0{% endif %}</p>
           {% endif %}
+          {% if widget.data.breakdown %}
+          <ul class="widget-breakdown">
+            {% for check, count in widget.data.breakdown.items() %}
+            <li>{{ check }} — {{ count }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if widget.data.by_feature %}
+          <ul class="widget-breakdown">
+            {% for feature, stats in widget.data.by_feature.items() %}
+            <li>{{ feature }} — {{ stats.calls }} calls, ${{ "%.2f"|format(stats.cost_usd) }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
         {% else %}
           <p class="widget-empty">No data yet</p>
         {% endif %}
       {% elif widget.data and widget.data.chart == 'bar' %}
         {% if widget.data.data %}
-          {{ charts.bar_chart(widget.data.data) }}
+          {{ charts.bar_chart(widget.data.data, widget.data.eol_versions|default([])) }}
+          {% if widget.data.top_failing_checks %}
+          <ul class="widget-breakdown">
+            {% for item in widget.data.top_failing_checks %}
+            <li>{{ item.check }} — {{ item.count }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+          {% if widget.data.rollup_collected_at %}
+          <p class="widget-updated widget-rollup-updated">posture data as of {{ widget.data.rollup_collected_at }}</p>
+          {% endif %}
         {% else %}
           <p class="widget-empty">No data yet</p>
         {% endif %}

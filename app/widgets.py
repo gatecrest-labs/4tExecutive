@@ -37,6 +37,43 @@ def _downsample(points: list[tuple[str, float]], max_points: int = 80) -> list[t
     return bucketed
 
 
+# Maps a widget type to the payload's per-field-group freshness key and the
+# threshold (minutes) past which that group's data is considered stale --
+# 2x the group's expected refresh interval, per design doc section 8.
+_FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
+    "4thealth.hygiene_score": ("hygiene_sweep_collected_at", 120),
+    "4thealth.version_compliance": ("device_sweep_collected_at", 30),
+    "4thealth.pending_config_diffs": ("device_sweep_collected_at", 30),
+    "4thealth.fleet_availability": ("device_sweep_collected_at", 30),
+    "4thealth.firewall_online_count": ("device_sweep_collected_at", 30),
+    "4thealth.firewall_managed_count": ("device_sweep_collected_at", 30),
+    "4thealth.rule_count_total": ("rule_count_collected_at", 120),
+    "4thealth.rule_hygiene": ("hygiene_sweep_collected_at", 120),
+    "4thealth.device_review_posture": ("device_review", 2880),
+}
+
+
+def _is_stale(value: dict, widget_type: str) -> bool | None:
+    """Return whether the widget type's underlying field group is stale, or
+    None if this widget type has no known field-group freshness key."""
+    freshness_key = _FIELD_GROUP_FRESHNESS.get(widget_type)
+    if freshness_key is None:
+        return None
+    key, threshold_minutes = freshness_key
+    if key == "device_review":
+        collected_at = (value.get("device_review") or {}).get("collected_at")
+    else:
+        collected_at = value.get(key)
+    if not collected_at:
+        return None
+    try:
+        collected_dt = datetime.fromisoformat(collected_at)
+    except ValueError:
+        return None
+    age_minutes = (datetime.now(UTC) - collected_dt).total_seconds() / 60
+    return age_minutes > threshold_minutes
+
+
 WIDGET_CATALOG: dict[str, dict] = {
     "4thealth.hygiene_score": {
         "label": "Hygiene Score",
@@ -119,11 +156,28 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "2x2",
         "chart_type": "bar",
     },
+    "4thealth.device_review_posture": {
+        "label": "Configuration Posture",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "device_review",
+        "default_size": "2x2",
+        "chart_type": "bar",
+        "rag": {"direction": "higher", "green": 0, "amber": 0},
+    },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "ai_usage_24h",
+        "default_size": "2x2",
+        "chart_type": "line",
+    },
+    "4thealth.rule_hygiene": {
+        "label": "Rule Hygiene",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "rule_hygiene",
         "default_size": "2x2",
         "chart_type": "line",
     },
@@ -176,13 +230,18 @@ def default_layout() -> list[dict]:
     (4texecutive.*) are excluded — they live on the Admin > System page,
     not the executive dashboard.
 
-    The AI usage widget is the one exception — it's only included when the
-    source's latest snapshot reports ai_enabled: true, since most 4thealth
+    Three widgets are conditional. The AI usage widget is only included when
+    the source's latest snapshot reports ai_enabled: true, since most 4thealth
     instances won't have AI turned on and an always-empty tile isn't useful
-    default clutter. A user who manually saves a layout containing it still
-    sees it regardless (falls back to "No data yet" like any other widget
-    with a missing field) — this skip only affects the auto-generated
-    default.
+    default clutter. The Tier 2 rollup widgets (device_review_posture,
+    rule_hygiene) are only included when the latest snapshot actually carries
+    that rollup — a 4thealth+ release that hasn't shipped Tier 2 would
+    otherwise get two tiles reading "No data yet" forever, changing its
+    dashboard for the worse just because 4tExecutive upgraded.
+
+    A user who manually saves a layout containing any of them still sees it
+    regardless (falls back to "No data yet" like any other widget with a
+    missing field) — these skips only affect the auto-generated default.
     """
     widgets = []
     for widget_type, entry in WIDGET_CATALOG.items():
@@ -194,6 +253,10 @@ def default_layout() -> list[dict]:
             if widget_type == "4thealth.ai_usage_24h":
                 latest = get_latest(source["id"], entry["metric_type"])
                 if latest is None or not latest["value"].get("ai_enabled"):
+                    continue
+            elif widget_type in ("4thealth.device_review_posture", "4thealth.rule_hygiene"):
+                latest = get_latest(source["id"], entry["metric_type"])
+                if latest is None or latest["value"].get(entry["field"]) is None:
                     continue
             widgets.append(
                 {
@@ -264,6 +327,9 @@ def get_widget_value(widget_instance: dict) -> dict | None:
         "value": latest["value"].get(entry["field"]),
         "collected_at": latest["collected_at"],
     }
+    stale = _is_stale(latest["value"], widget_instance["type"])
+    if stale is not None:
+        result["stale"] = stale
     return _attach_rag(widget_instance["type"], entry, result)
 
 
@@ -276,6 +342,23 @@ RANGES: dict[str, timedelta] = {
     "30d": timedelta(days=30),
 }
 DEFAULT_RANGE = "1d"
+
+
+def _empty_bar(widget_type: str) -> dict:
+    """No-data payload for a bar widget, carrying that widget's full key set.
+
+    Every no-data path for a given widget type returns the same keys as its
+    populated path, so callers never have to guess which of them is missing:
+    eol_versions belongs to version_breakdown, top_failing_checks and
+    rollup_collected_at to device_review_posture.
+    """
+    empty = {"chart": "bar", "data": {}, "collected_at": None}
+    if widget_type == "4thealth.version_breakdown":
+        empty["eol_versions"] = []
+    elif widget_type == "4thealth.device_review_posture":
+        empty["top_failing_checks"] = []
+        empty["rollup_collected_at"] = None
+    return empty
 
 
 def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
@@ -296,15 +379,64 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     if chart_type == "bar":
         latest = get_latest(source_id, entry["metric_type"])
         if latest is None:
-            return _attach_rag(widget_instance["type"], entry, {"chart": "bar", "data": {}, "collected_at": None})
+            return _attach_rag(
+                widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+            )
+
+        if widget_instance["type"] == "4thealth.device_review_posture":
+            device_review = latest["value"].get("device_review")
+            if not device_review:
+                return _attach_rag(
+                    widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+                )
+            reviewed = device_review.get("devices_reviewed") or 0
+            failing = device_review.get("devices_with_failures") or 0
+            result = {
+                "chart": "bar",
+                "data": {"Passing": reviewed - failing, "Failing": failing},
+                "top_failing_checks": device_review.get("top_failing_checks") or [],
+                # collected_at is the 4tExecutive poll time, like every other
+                # widget — the dashboard posture strip aggregates it to judge
+                # poll freshness. The rollup's own timestamp is legitimately up
+                # to 48h old by design, so it gets its own key instead.
+                "collected_at": latest["collected_at"],
+                "rollup_collected_at": device_review.get("collected_at"),
+            }
+            critical = (device_review.get("findings_by_severity") or {}).get("critical") or 0
+            result["rag"] = "red" if critical > 0 else "green"
+            return result
+
+        raw = latest["value"].get(entry["field"]) or {}
+        if widget_instance["type"] == "4thealth.version_breakdown":
+            data = {}
+            eol_versions = []
+            for version, entry_value in raw.items():
+                if isinstance(entry_value, dict):
+                    count = entry_value.get("count")
+                    eol = bool(entry_value.get("eol"))
+                else:
+                    count = entry_value
+                    eol = False
+                # Drop entries whose count isn't a real number — the bar_chart
+                # macro divides by max(values), so a None or a string here
+                # raises a Jinja TypeError that takes down the whole dashboard
+                # route, not just this tile. Same numeric-safety idiom the line
+                # chart path uses when filtering history points.
+                if not isinstance(count, (int, float)) or isinstance(count, bool):
+                    continue
+                data[version] = count
+                if eol:
+                    eol_versions.append(version)
+            return _attach_rag(
+                widget_instance["type"],
+                entry,
+                {"chart": "bar", "data": data, "eol_versions": eol_versions, "collected_at": latest["collected_at"]},
+            )
+
         return _attach_rag(
             widget_instance["type"],
             entry,
-            {
-                "chart": "bar",
-                "data": latest["value"].get(entry["field"]) or {},
-                "collected_at": latest["collected_at"],
-            },
+            {"chart": "bar", "data": raw, "collected_at": latest["collected_at"]},
         )
 
     range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
@@ -321,11 +453,15 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
                 "max": None,
                 "extra_label": None,
                 "delta": None,
+                "breakdown": None,
+                "by_feature": None,
                 "collected_at": None,
             },
         )
 
     extra_label = None
+    breakdown = None
+    by_feature = None
     if widget_instance["type"] == "4thealth.ai_usage_24h":
         points = [
             (h["collected_at"], (h["value"].get("ai_usage_24h") or {}).get("ai_connection_count_24h"))
@@ -334,6 +470,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         cost = (history[-1]["value"].get("ai_usage_24h") or {}).get("ai_estimated_cost_24h_usd")
         if cost is not None:
             extra_label = f"${cost:.2f} est. cost (24h)"
+        by_feature = history[-1]["value"].get("ai_usage_by_feature")
     elif widget_instance["type"] == "4thealth.fleet_availability":
         points = []
         for h in history:
@@ -345,6 +482,12 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         latest_total = history[-1]["value"].get("firewall_managed_count")
         if isinstance(latest_online, (int, float)) and isinstance(latest_total, (int, float)) and latest_total:
             extra_label = f"{latest_online} / {latest_total} ({round(latest_online / latest_total * 100)}%)"
+    elif widget_instance["type"] == "4thealth.rule_hygiene":
+        points = [
+            (h["collected_at"], (h["value"].get("rule_hygiene") or {}).get("rule_findings_total"))
+            for h in history
+        ]
+        breakdown = (history[-1]["value"].get("rule_hygiene") or {}).get("rule_findings_by_type")
     else:
         points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
 
@@ -356,20 +499,21 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     values = [v for _, v in points]
     delta = round(values[-1] - values[0], 2) if len(values) >= 2 else None
 
-    return _attach_rag(
-        widget_instance["type"],
-        entry,
-        {
-            "chart": "line",
-            "points": points,
-            "min": min(values) if values else None,
-            "max": max(values) if values else None,
-            "extra_label": extra_label,
-            "delta": delta,
-            "collected_at": history[-1]["collected_at"],
-        },
-        line_rag_value=latest_numeric_value,
-    )
+    stale = _is_stale(history[-1]["value"], widget_instance["type"])
+    result = {
+        "chart": "line",
+        "points": points,
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
+        "extra_label": extra_label,
+        "delta": delta,
+        "breakdown": breakdown,
+        "by_feature": by_feature,
+        "collected_at": history[-1]["collected_at"],
+    }
+    if stale is not None:
+        result["stale"] = stale
+    return _attach_rag(widget_instance["type"], entry, result, line_rag_value=latest_numeric_value)
 
 
 def source_name(source_instance: str) -> str:

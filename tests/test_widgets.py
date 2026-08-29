@@ -137,7 +137,16 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
 
     fourthealth_widgets = [w for w in layout if w["type"].startswith("4thealth.")]
     types = {w["type"] for w in fourthealth_widgets}
-    excluded = {"4thealth.ai_usage_24h", "4thealth.firewall_online_count", "4thealth.firewall_managed_count"}
+    # ai_usage_24h, device_review_posture and rule_hygiene are only added to the
+    # auto-generated default when the source's latest snapshot actually carries
+    # the corresponding payload field — no snapshot here, so none of them appear.
+    excluded = {
+        "4thealth.ai_usage_24h",
+        "4thealth.device_review_posture",
+        "4thealth.rule_hygiene",
+        "4thealth.firewall_online_count",
+        "4thealth.firewall_managed_count",
+    }
     expected = {
         t for t, e in WIDGET_CATALOG.items()
         if e["source_system"] == "4thealth" and t not in excluded
@@ -256,6 +265,45 @@ def test_default_layout_includes_ai_widget_when_ai_enabled_true():
     ai_widgets = [w for w in layout if w["type"] == "4thealth.ai_usage_24h"]
     assert len(ai_widgets) == 1
     assert ai_widgets[0]["source_instance"] == "4th-1"
+
+
+def test_default_layout_excludes_tier2_widgets_when_source_has_no_rollups():
+    """A 4thealth+ release without Tier 2 must not get two always-empty tiles."""
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot("4th-1", "summary", {"hygiene_score": 92}, "2026-08-27T10:00:00Z")
+
+    types = {w["type"] for w in default_layout()}
+
+    assert "4thealth.device_review_posture" not in types
+    assert "4thealth.rule_hygiene" not in types
+
+
+def test_default_layout_includes_device_review_posture_when_rollup_present():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot(
+        "4th-1", "summary",
+        {"device_review": {"devices_reviewed": 10, "devices_with_failures": 1}},
+        "2026-08-27T10:00:00Z",
+    )
+
+    widgets = [w for w in default_layout() if w["type"] == "4thealth.device_review_posture"]
+
+    assert len(widgets) == 1
+    assert widgets[0]["source_instance"] == "4th-1"
+
+
+def test_default_layout_includes_rule_hygiene_when_rollup_present():
+    sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
+    write_snapshot(
+        "4th-1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 100, "rule_findings_by_type": {"shadow": 4}}},
+        "2026-08-27T10:00:00Z",
+    )
+
+    widgets = [w for w in default_layout() if w["type"] == "4thealth.rule_hygiene"]
+
+    assert len(widgets) == 1
+    assert widgets[0]["source_instance"] == "4th-1"
 
 
 def test_catalog_contains_host_metric_widgets():
@@ -379,6 +427,8 @@ def test_get_widget_series_line_no_history_returns_empty_chart():
         "max": None,
         "extra_label": None,
         "delta": None,
+        "breakdown": None,
+        "by_feature": None,
         "collected_at": None,
     }
 
@@ -403,7 +453,182 @@ def test_get_widget_series_bar_no_snapshot_returns_empty_chart():
 
     result = get_widget_series(widget, "1d")
 
-    assert result == {"chart": "bar", "data": {}, "collected_at": None}
+    assert result == {"chart": "bar", "data": {}, "eol_versions": [], "collected_at": None}
+
+
+def test_get_widget_series_version_breakdown_handles_new_eol_shape():
+    write_snapshot(
+        "s1", "summary",
+        {"version_breakdown": {"7.4.5": {"count": 12, "eol": False}, "6.4.2": {"count": 3, "eol": True}}},
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12, "6.4.2": 3}
+    assert result["eol_versions"] == ["6.4.2"]
+
+
+def test_get_widget_series_version_breakdown_handles_old_flat_shape():
+    write_snapshot(
+        "s1", "summary", {"version_breakdown": {"7.4.5": 12, "6.4.2": 3}}, "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12, "6.4.2": 3}
+    assert result["eol_versions"] == []
+
+
+def test_get_widget_series_version_breakdown_omits_entries_without_a_numeric_count():
+    """Malformed entries are dropped, so bar_chart never divides by a non-number."""
+    write_snapshot(
+        "s1", "summary",
+        {
+            "version_breakdown": {
+                "7.4.5": {"count": 12, "eol": False},
+                "7.2.9": {"eol": True},
+                "7.0.14": "not-a-number",
+                "6.4.2": {"count": None, "eol": True},
+                "6.2.1": {"count": True},
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12}
+    assert result["eol_versions"] == []
+    assert all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in result["data"].values()
+    )
+
+
+def test_get_widget_series_version_breakdown_empty_when_no_data():
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert result["eol_versions"] == []
+
+
+def test_catalog_has_device_review_posture_widget():
+    entry = WIDGET_CATALOG["4thealth.device_review_posture"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "bar"
+    assert entry["default_size"] == "2x2"
+
+
+def test_get_widget_series_device_review_posture_computes_pass_fail_and_rag():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 42,
+                "devices_with_failures": 7,
+                "findings_by_severity": {"critical": 1, "high": 3, "medium": 9, "low": 4},
+                "top_failing_checks": [{"check": "default_admin", "count": 5}],
+                "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"Passing": 35, "Failing": 7}
+    assert result["top_failing_checks"] == [{"check": "default_admin", "count": 5}]
+    assert result["collected_at"] == "2026-08-28T09:00:00Z"
+    assert result["rollup_collected_at"] == "2026-08-28T06:00:00Z"
+    assert result["rag"] == "red"
+
+
+def test_get_widget_series_device_review_posture_collected_at_is_poll_time_not_rollup_time():
+    """collected_at must stay the 4tExecutive poll time like every other widget.
+
+    The device-review rollup carries its own (legitimately much older, up to
+    48h) timestamp; exposing that as collected_at poisoned the dashboard
+    posture strip's freshness aggregate, which compares collected_at against
+    2 * poll_interval_minutes.
+    """
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 20,
+                "devices_with_failures": 2,
+                "findings_by_severity": {"critical": 0},
+                "top_failing_checks": [],
+                "collected_at": "2026-08-26T01:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["collected_at"] == "2026-08-28T09:00:00Z"
+    assert result["rollup_collected_at"] == "2026-08-26T01:00:00Z"
+
+
+def test_get_widget_series_device_review_posture_green_when_no_critical_findings():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 10, "devices_with_failures": 0,
+                "findings_by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+                "top_failing_checks": [], "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    assert get_widget_series(widget, "30d")["rag"] == "green"
+
+
+def test_get_widget_series_device_review_posture_no_data_when_rollup_absent():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert "rag" not in result
+
+
+def test_get_widget_series_device_review_posture_no_data_paths_share_one_shape():
+    """Never-polled and polled-without-rollup must return the same key set."""
+    never_polled = get_widget_series(
+        {"type": "4thealth.device_review_posture", "source_instance": "unpolled"}, "30d"
+    )
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    rollup_absent = get_widget_series(
+        {"type": "4thealth.device_review_posture", "source_instance": "s1"}, "30d"
+    )
+
+    expected = {"chart", "data", "top_failing_checks", "collected_at", "rollup_collected_at"}
+    assert set(never_polled) == expected
+    assert set(rollup_absent) == expected
+    # eol_versions is a version_breakdown concern and must not leak in here.
+    assert "eol_versions" not in never_polled
+
+
+def test_get_widget_series_version_breakdown_no_data_shape_has_eol_versions():
+    result = get_widget_series(
+        {"type": "4thealth.version_breakdown", "source_instance": "unpolled"}, "30d"
+    )
+
+    assert set(result) == {"chart", "data", "eol_versions", "collected_at"}
+    assert "top_failing_checks" not in result
 
 
 def test_get_widget_series_ai_usage_charts_connection_count_and_carries_cost():
@@ -537,3 +762,114 @@ def test_get_widget_series_line_delta_none_with_no_history():
     result = get_widget_series({"type": "4thealth.rule_count_total", "source_instance": "s1"}, "1d")
 
     assert result["delta"] is None
+
+
+def test_catalog_has_rule_hygiene_widget_with_no_rag():
+    entry = WIDGET_CATALOG["4thealth.rule_hygiene"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "line"
+    assert "rag" not in entry
+
+
+def test_get_widget_series_rule_hygiene_line_points_and_breakdown():
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 100, "rule_findings_by_type": {"shadow": 4, "unhit": 60}}},
+        _iso(600),
+    )
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {"shadow": 5, "unhit": 65}}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.rule_hygiene", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert [v for _, v in result["points"]] == [100, 118]
+    assert result["breakdown"] == {"shadow": 5, "unhit": 65}
+    assert result["delta"] == 18
+    assert "rag" not in result
+
+
+def test_get_widget_series_rule_hygiene_skips_snapshots_without_rollup():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, _iso(10))
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {}}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.rule_hygiene", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert len(result["points"]) == 1
+
+
+def test_get_widget_series_ai_usage_includes_by_feature_breakdown_when_present():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41},
+            "ai_usage_by_feature": {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}},
+        },
+        _iso(5),
+    )
+    widget = {"type": "4thealth.ai_usage_24h", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["by_feature"] == {"device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0}}
+
+
+def test_get_widget_series_ai_usage_by_feature_absent_when_not_in_payload():
+    write_snapshot(
+        "s1", "summary",
+        {"ai_usage_24h": {"ai_connection_count_24h": 12, "ai_estimated_cost_24h_usd": 0.41}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.ai_usage_24h", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["by_feature"] is None
+
+
+def test_get_widget_value_stale_true_when_field_group_collected_at_old():
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    write_snapshot(
+        "s1", "summary",
+        {"hygiene_score": 90, "hygiene_sweep_collected_at": old_ts},
+        "2026-08-28T09:00:00Z",  # poll-time collected_at is fresh; field-group collected_at is stale
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["stale"] is True
+
+
+def test_get_widget_value_stale_false_when_field_group_collected_at_recent():
+    recent_ts = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    write_snapshot(
+        "s1", "summary",
+        {"hygiene_score": 90, "hygiene_sweep_collected_at": recent_ts},
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert get_widget_value(widget)["stale"] is False
+
+
+def test_get_widget_value_no_stale_key_when_field_group_collected_at_absent():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert "stale" not in get_widget_value(widget)
+
+
+def test_get_widget_value_no_stale_key_for_widget_type_without_a_field_group():
+    write_snapshot("s1", "summary", {"adom_count": 4}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.adom_count", "source_instance": "s1"}
+
+    assert "stale" not in get_widget_value(widget)

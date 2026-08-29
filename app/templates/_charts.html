@@ -11,14 +11,14 @@
 <p class="chart-range-label"><span>{{ min_v }}</span> – <span>{{ max_v }}</span></p>
 {% endmacro %}
 
-{% macro bar_chart(data) %}
+{% macro bar_chart(data, highlight=[]) %}
 {% set count = data | length %}
 {% set max_v = data.values() | max %}
 <svg class="chart-svg chart-bar" viewBox="0 0 240 80" preserveAspectRatio="none">
   {% for version, value in data.items() %}
   {% set bar_w = 240 / count %}
   {% set bar_h = (value / max_v) * 55 if max_v else 0 %}
-  <rect x="{{ '%.2f' | format(loop.index0 * bar_w + 4) }}" y="{{ '%.2f' | format(70 - bar_h) }}" width="{{ '%.2f' | format(bar_w - 8) }}" height="{{ '%.2f' | format(bar_h) }}" fill="var(--accent)" />
+  <rect x="{{ '%.2f' | format(loop.index0 * bar_w + 4) }}" y="{{ '%.2f' | format(70 - bar_h) }}" width="{{ '%.2f' | format(bar_w - 8) }}" height="{{ '%.2f' | format(bar_h) }}" fill="{{ 'var(--status-failed)' if version in highlight else 'var(--accent)' }}" />
   <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="{{ '%.2f' | format(70 - bar_h - 3) }}" text-anchor="middle" class="chart-bar-count">{{ value }}</text>
   <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="78" text-anchor="middle" class="chart-bar-label">{{ version }}</text>
   {% endfor %}
