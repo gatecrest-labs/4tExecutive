@@ -48,6 +48,7 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 
 | JSON key                     | Widget                        |
 |-------------------------------|--------------------------------|
+| `schema_version`              | (versioning; not a widget)     |
 | `hygiene_score`               | Hygiene Score                  |
 | `version_compliance_pct`      | Device Version Compliance %    |
 | `pending_config_diff_count`   | Pending Config Diffs           |
@@ -57,6 +58,14 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `rule_count_total`            | Total Rules                    |
 | `adom_count`                  | ADOMs Configured                |
 | `version_breakdown`           | FortiOS Versions (table)       |
+| `device_review`               | Configuration Posture          |
+| `rule_hygiene`                | Rule Hygiene                   |
+| `ai_usage_by_feature`         | (detail breakdown for AI Usage)|
+| `device_sweep_status`         | (internal sweep tracking)      |
+| `hygiene_sweep_status`        | (internal sweep tracking)      |
+| `device_sweep_collected_at`   | (timestamp for device sweep)   |
+| `hygiene_sweep_collected_at`  | (timestamp for hygiene sweep)  |
+| `rule_count_collected_at`     | (timestamp for rule count)     |
 
 `firewall_online_count` and `firewall_managed_count` are still the two raw
 fields a source reports, and both remain individually addable widgets (e.g.
@@ -101,22 +110,116 @@ object, the same way `version_breakdown` carries a dict instead of a scalar.
 | `faz_health`          | FortiAnalyzer Health     |
 | `log_volume_trend`    | Log Volume Trend         |
 
-Example response body from a 4thealth instance:
+Example response body from a 4thealth instance (minimal):
 
 ```json
 {
+  "schema_version": 1,
   "hygiene_score": 92,
   "version_compliance_pct": 88,
   "pending_config_diff_count": 3,
   "last_backup_status": "ok",
-  "firewall_online_count": 14
+  "firewall_online_count": 14,
+  "firewall_managed_count": 15,
+  "device_sweep_status": "completed",
+  "device_sweep_collected_at": "2026-08-28T09:00:00Z",
+  "hygiene_sweep_status": "completed",
+  "hygiene_sweep_collected_at": "2026-08-28T08:30:00Z",
+  "rule_count_collected_at": "2026-08-28T08:15:00Z"
+}
+```
+
+A richer example including optional nested objects (device_review, rule_hygiene):
+
+```json
+{
+  "schema_version": 1,
+  "hygiene_score": 92,
+  "version_breakdown": {"7.4.5": {"count": 62, "eol": false}, "7.2.9": {"count": 41, "eol": false}},
+  "device_review": {
+    "devices_reviewed": 103,
+    "devices_with_failures": 8,
+    "findings_by_severity": {"critical": 1, "high": 2, "medium": 5, "low": 3},
+    "top_failing_checks": [{"check": "admin_restriction", "count": 4}],
+    "collected_at": "2026-08-28T06:00:00Z"
+  },
+  "rule_hygiene": {
+    "rule_findings_total": 118,
+    "rule_findings_by_type": {"shadow": 5, "unhit": 65},
+    "collected_at": "2026-08-28T09:00:00Z"
+  },
+  "ai_enabled": true,
+  "ai_usage_24h": {"ai_connection_count_24h": 340, "ai_estimated_cost_24h_usd": 4.10},
+  "ai_usage_by_feature": {"device_review_summary": {"calls": 45, "cost_usd": 2.3, "failures": 0}},
+  "device_sweep_collected_at": "2026-08-28T09:00:00Z",
+  "hygiene_sweep_collected_at": "2026-08-28T08:30:00Z"
 }
 ```
 
 `version_breakdown`'s value is a JSON object mapping version string to
-firewall count, e.g. `{"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}`. Along with
-`ai_usage_24h`, these are the only two fields whose value is a nested
-object; every other field above is a scalar.
+firewall count. **Shape changed from flat int to nested object:**
+- **Old format** (still supported): `{"7.4.5": 62, "7.2.9": 41, "7.0.14": 25}`
+- **New format**: `{"7.4.5": {"count": 62, "eol": false}, "7.2.9": {"count": 41, "eol": false}, "7.0.14": {"count": 25, "eol": true}}`
+
+4tExecutive handles both shapes for backward compatibility — if your source sends the old flat shape, widgets display it as before; if it sends the new shape with `eol` flags, the dashboard also displays which versions are end-of-life.
+
+`device_review` is a nested object (absent/null until the first scheduled
+device-review rollup run) containing configuration posture details:
+
+```json
+{
+  "device_review": {
+    "devices_reviewed": 42,
+    "devices_with_failures": 7,
+    "findings_by_severity": {"critical": 1, "high": 3, "medium": 9, "low": 4},
+    "top_failing_checks": [{"check": "default_admin", "count": 5}],
+    "collected_at": "2026-08-28T06:00:00Z"
+  }
+}
+```
+
+`rule_hygiene` is a nested object (absent/null until the first scheduled
+hygiene-sweep rollup run) containing rule quality metrics:
+
+```json
+{
+  "rule_hygiene": {
+    "rule_findings_total": 100,
+    "rule_findings_by_type": {"shadow": 4, "unhit": 60},
+    "collected_at": "2026-08-28T09:00:00Z"
+  }
+}
+```
+
+`ai_usage_by_feature` is an optional nested object (present only if AI usage
+data is available, keyed by feature name) containing per-feature cost and usage
+breakdown:
+
+```json
+{
+  "ai_usage_by_feature": {
+    "device_review_summary": {"calls": 5, "cost_usd": 0.2, "failures": 0},
+    "rule_analysis": {"calls": 3, "cost_usd": 0.15, "failures": 1}
+  }
+}
+```
+
+**Sweep status and collection timestamps** — freshness tracking for async rollup jobs:
+- `device_sweep_status` — current status of the device-sweep job ("idle", "running", "completed", or "failed")
+- `hygiene_sweep_status` — current status of the hygiene-sweep job ("idle", "running", "completed", or "failed")
+- `device_sweep_collected_at` — ISO 8601 timestamp of the latest completed device sweep (collected data freshness for device_review, version_breakdown, version_compliance_pct, pending_config_diff_count, firewall counts, etc.)
+- `hygiene_sweep_collected_at` — ISO 8601 timestamp of the latest completed hygiene sweep (collected data freshness for hygiene_score and rule_hygiene)
+- `rule_count_collected_at` — ISO 8601 timestamp of the latest rule count collection (freshness for rule_count_total)
+
+These `*_collected_at` timestamps reflect when each respective job last completed a full rollup and collected its data; widgets check these to determine staleness (see `_FIELD_GROUP_FRESHNESS` in `app/widgets.py`).
+
+`schema_version` — optional integer field indicating the contract version of the
+payload structure. Sources may omit this field (default assumes latest version
+compatible with 4tExecutive). Included for future API evolution scenarios.
+
+Along with `version_breakdown`, `device_review`, `rule_hygiene`, and `ai_usage_24h`,
+these nested and collection-tracking fields form the complete contract; every other
+field above is a scalar.
 
 See [customizing-dashboard.md](customizing-dashboard.md) for adding a new
 widget/field beyond this initial catalog.
