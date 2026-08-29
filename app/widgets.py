@@ -397,11 +397,21 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             eol_versions = []
             for version, entry_value in raw.items():
                 if isinstance(entry_value, dict):
-                    data[version] = entry_value.get("count")
-                    if entry_value.get("eol"):
-                        eol_versions.append(version)
+                    count = entry_value.get("count")
+                    eol = bool(entry_value.get("eol"))
                 else:
-                    data[version] = entry_value
+                    count = entry_value
+                    eol = False
+                # Drop entries whose count isn't a real number — the bar_chart
+                # macro divides by max(values), so a None or a string here
+                # raises a Jinja TypeError that takes down the whole dashboard
+                # route, not just this tile. Same numeric-safety idiom the line
+                # chart path uses when filtering history points.
+                if not isinstance(count, (int, float)) or isinstance(count, bool):
+                    continue
+                data[version] = count
+                if eol:
+                    eol_versions.append(version)
             return _attach_rag(
                 widget_instance["type"],
                 entry,

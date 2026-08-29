@@ -482,6 +482,32 @@ def test_get_widget_series_version_breakdown_handles_old_flat_shape():
     assert result["eol_versions"] == []
 
 
+def test_get_widget_series_version_breakdown_omits_entries_without_a_numeric_count():
+    """Malformed entries are dropped, so bar_chart never divides by a non-number."""
+    write_snapshot(
+        "s1", "summary",
+        {
+            "version_breakdown": {
+                "7.4.5": {"count": 12, "eol": False},
+                "7.2.9": {"eol": True},
+                "7.0.14": "not-a-number",
+                "6.4.2": {"count": None, "eol": True},
+                "6.2.1": {"count": True},
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"7.4.5": 12}
+    assert result["eol_versions"] == []
+    assert all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in result["data"].values()
+    )
+
+
 def test_get_widget_series_version_breakdown_empty_when_no_data():
     widget = {"type": "4thealth.version_breakdown", "source_instance": "s1"}
 
