@@ -116,7 +116,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "chart_type": "line",
     },
     "4thealth.firewall_managed_count": {
-        "label": "Firewalls Managed",
+        "label": "Total Managed Firewalls",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_managed_count",
@@ -146,7 +146,6 @@ WIDGET_CATALOG: dict[str, dict] = {
         "metric_type": "summary",
         "field": "adom_count",
         "default_size": "1x1",
-        "chart_type": "line",
     },
     "4thealth.version_breakdown": {
         "label": "FortiOS Versions",
@@ -245,7 +244,7 @@ def default_layout() -> list[dict]:
     """
     widgets = []
     for widget_type, entry in WIDGET_CATALOG.items():
-        if widget_type in {"4thealth.firewall_online_count", "4thealth.firewall_managed_count"}:
+        if widget_type == "4thealth.firewall_online_count":
             continue
         for source in list_sources():
             if source.get("system") != entry["source_system"] or not source.get("enabled", True):

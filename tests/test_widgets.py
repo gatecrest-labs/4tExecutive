@@ -145,7 +145,6 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
         "4thealth.device_review_posture",
         "4thealth.rule_hygiene",
         "4thealth.firewall_online_count",
-        "4thealth.firewall_managed_count",
     }
     expected = {
         t for t, e in WIDGET_CATALOG.items()
@@ -367,7 +366,6 @@ def test_catalog_marks_expected_widgets_with_chart_type():
         "4thealth.firewall_online_count",
         "4thealth.firewall_managed_count",
         "4thealth.rule_count_total",
-        "4thealth.adom_count",
         "4thealth.ai_usage_24h",
         "4texecutive.cpu_percent",
         "4texecutive.memory_percent",
@@ -378,6 +376,7 @@ def test_catalog_marks_expected_widgets_with_chart_type():
     assert WIDGET_CATALOG["4thealth.version_breakdown"]["chart_type"] == "bar"
     assert "chart_type" not in WIDGET_CATALOG["4thealth.hygiene_score"]
     assert "chart_type" not in WIDGET_CATALOG["4thealth.last_backup_status"]
+    assert "chart_type" not in WIDGET_CATALOG["4thealth.adom_count"]
 
 
 def test_get_widget_series_delegates_to_get_widget_value_for_unflagged_widget():
@@ -668,15 +667,15 @@ def test_catalog_has_fleet_availability_widget():
     assert entry["rag"] == {"direction": "ratio", "green": 100, "amber": 90}
 
 
-def test_default_layout_includes_fleet_availability_not_the_aliased_pair():
+def test_default_layout_includes_fleet_availability_and_managed_count_not_online():
     sources_module.add_source(id="4th-1", system="4thealth", name="A", base_url="https://a", token="t")
 
     layout = default_layout()
 
     types = {w["type"] for w in layout}
     assert "4thealth.fleet_availability" in types
+    assert "4thealth.firewall_managed_count" in types
     assert "4thealth.firewall_online_count" not in types
-    assert "4thealth.firewall_managed_count" not in types
 
 
 def test_get_widget_series_fleet_availability_computes_percentage_points():
