@@ -47,6 +47,13 @@
       {% elif widget.data and widget.data.chart == 'bar' %}
         {% if widget.data.data %}
           {{ charts.bar_chart(widget.data.data, widget.data.eol_versions|default([])) }}
+          {% if widget.data.top_failing_checks %}
+          <ul class="widget-breakdown">
+            {% for item in widget.data.top_failing_checks %}
+            <li>{{ item.check }} — {{ item.count }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
         {% else %}
           <p class="widget-empty">No data yet</p>

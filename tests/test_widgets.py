@@ -441,6 +441,64 @@ def test_get_widget_series_version_breakdown_empty_when_no_data():
     assert result["eol_versions"] == []
 
 
+def test_catalog_has_device_review_posture_widget():
+    entry = WIDGET_CATALOG["4thealth.device_review_posture"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "bar"
+    assert entry["default_size"] == "2x2"
+
+
+def test_get_widget_series_device_review_posture_computes_pass_fail_and_rag():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 42,
+                "devices_with_failures": 7,
+                "findings_by_severity": {"critical": 1, "high": 3, "medium": 9, "low": 4},
+                "top_failing_checks": [{"check": "default_admin", "count": 5}],
+                "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"Passing": 35, "Failing": 7}
+    assert result["top_failing_checks"] == [{"check": "default_admin", "count": 5}]
+    assert result["collected_at"] == "2026-08-28T06:00:00Z"
+    assert result["rag"] == "red"
+
+
+def test_get_widget_series_device_review_posture_green_when_no_critical_findings():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 10, "devices_with_failures": 0,
+                "findings_by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+                "top_failing_checks": [], "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    assert get_widget_series(widget, "30d")["rag"] == "green"
+
+
+def test_get_widget_series_device_review_posture_no_data_when_rollup_absent():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert "rag" not in result
+
+
 def test_get_widget_series_ai_usage_charts_connection_count_and_carries_cost():
     write_snapshot(
         "s1", "summary",

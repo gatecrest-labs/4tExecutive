@@ -227,6 +227,36 @@ def test_dashboard_handles_version_breakdown_missing_field_gracefully(client, tm
     assert b"No data yet" in response.data
 
 
+def test_dashboard_renders_device_review_posture_widget(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.device_review_posture", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 42, "devices_with_failures": 7,
+                "findings_by_severity": {"critical": 1, "high": 3, "medium": 9, "low": 4},
+                "top_failing_checks": [{"check": "default_admin", "count": 5}],
+                "collected_at": "2026-08-28T06:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Configuration Posture" in response.data
+    assert b"default_admin" in response.data
+    assert b"rag-red" in response.data
+
+
 def test_dashboard_colors_eol_version_bars_red(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)

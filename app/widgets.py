@@ -119,6 +119,15 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "2x2",
         "chart_type": "bar",
     },
+    "4thealth.device_review_posture": {
+        "label": "Configuration Posture",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "device_review",
+        "default_size": "2x2",
+        "chart_type": "bar",
+        "rag": {"direction": "higher", "green": 0, "amber": 0},
+    },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
         "source_system": "4thealth",
@@ -300,6 +309,25 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             if widget_instance["type"] == "4thealth.version_breakdown":
                 empty["eol_versions"] = []
             return _attach_rag(widget_instance["type"], entry, empty)
+
+        if widget_instance["type"] == "4thealth.device_review_posture":
+            device_review = latest["value"].get("device_review")
+            if not device_review:
+                return _attach_rag(
+                    widget_instance["type"], entry,
+                    {"chart": "bar", "data": {}, "top_failing_checks": [], "collected_at": None},
+                )
+            reviewed = device_review.get("devices_reviewed") or 0
+            failing = device_review.get("devices_with_failures") or 0
+            result = {
+                "chart": "bar",
+                "data": {"Passing": reviewed - failing, "Failing": failing},
+                "top_failing_checks": device_review.get("top_failing_checks") or [],
+                "collected_at": device_review.get("collected_at"),
+            }
+            critical = (device_review.get("findings_by_severity") or {}).get("critical") or 0
+            result["rag"] = "red" if critical > 0 else "green"
+            return result
 
         raw = latest["value"].get(entry["field"]) or {}
         if widget_instance["type"] == "4thealth.version_breakdown":
