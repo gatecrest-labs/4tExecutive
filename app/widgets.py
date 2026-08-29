@@ -344,6 +344,23 @@ RANGES: dict[str, timedelta] = {
 DEFAULT_RANGE = "1d"
 
 
+def _empty_bar(widget_type: str) -> dict:
+    """No-data payload for a bar widget, carrying that widget's full key set.
+
+    Every no-data path for a given widget type returns the same keys as its
+    populated path, so callers never have to guess which of them is missing:
+    eol_versions belongs to version_breakdown, top_failing_checks and
+    rollup_collected_at to device_review_posture.
+    """
+    empty = {"chart": "bar", "data": {}, "collected_at": None}
+    if widget_type == "4thealth.version_breakdown":
+        empty["eol_versions"] = []
+    elif widget_type == "4thealth.device_review_posture":
+        empty["top_failing_checks"] = []
+        empty["rollup_collected_at"] = None
+    return empty
+
+
 def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     """Return chart-ready data for a widget, or fall back to get_widget_value.
 
@@ -362,17 +379,15 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     if chart_type == "bar":
         latest = get_latest(source_id, entry["metric_type"])
         if latest is None:
-            empty = {"chart": "bar", "data": {}, "collected_at": None}
-            if widget_instance["type"] == "4thealth.version_breakdown":
-                empty["eol_versions"] = []
-            return _attach_rag(widget_instance["type"], entry, empty)
+            return _attach_rag(
+                widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+            )
 
         if widget_instance["type"] == "4thealth.device_review_posture":
             device_review = latest["value"].get("device_review")
             if not device_review:
                 return _attach_rag(
-                    widget_instance["type"], entry,
-                    {"chart": "bar", "data": {}, "top_failing_checks": [], "collected_at": None},
+                    widget_instance["type"], entry, _empty_bar(widget_instance["type"])
                 )
             reviewed = device_review.get("devices_reviewed") or 0
             failing = device_review.get("devices_with_failures") or 0

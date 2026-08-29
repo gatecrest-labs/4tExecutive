@@ -605,6 +605,32 @@ def test_get_widget_series_device_review_posture_no_data_when_rollup_absent():
     assert "rag" not in result
 
 
+def test_get_widget_series_device_review_posture_no_data_paths_share_one_shape():
+    """Never-polled and polled-without-rollup must return the same key set."""
+    never_polled = get_widget_series(
+        {"type": "4thealth.device_review_posture", "source_instance": "unpolled"}, "30d"
+    )
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    rollup_absent = get_widget_series(
+        {"type": "4thealth.device_review_posture", "source_instance": "s1"}, "30d"
+    )
+
+    expected = {"chart", "data", "top_failing_checks", "collected_at", "rollup_collected_at"}
+    assert set(never_polled) == expected
+    assert set(rollup_absent) == expected
+    # eol_versions is a version_breakdown concern and must not leak in here.
+    assert "eol_versions" not in never_polled
+
+
+def test_get_widget_series_version_breakdown_no_data_shape_has_eol_versions():
+    result = get_widget_series(
+        {"type": "4thealth.version_breakdown", "source_instance": "unpolled"}, "30d"
+    )
+
+    assert set(result) == {"chart", "data", "eol_versions", "collected_at"}
+    assert "top_failing_checks" not in result
+
+
 def test_get_widget_series_ai_usage_charts_connection_count_and_carries_cost():
     write_snapshot(
         "s1", "summary",
