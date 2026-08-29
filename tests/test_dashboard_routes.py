@@ -454,6 +454,28 @@ def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
     assert "▲ +30".encode() in response.data
 
 
+def test_dashboard_renders_rule_hygiene_breakdown(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_hygiene", "source_instance": "s1", "size": "2x2", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {"shadow": 5, "unhit": 65}}},
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Rule Hygiene" in response.data
+    assert b"shadow" in response.data
+
+
 def test_dashboard_posture_strip_ok_when_all_green(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)

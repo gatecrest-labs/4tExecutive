@@ -136,6 +136,14 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "2x2",
         "chart_type": "line",
     },
+    "4thealth.rule_hygiene": {
+        "label": "Rule Hygiene",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "rule_hygiene",
+        "default_size": "2x2",
+        "chart_type": "line",
+    },
     "4texecutive.cpu_percent": {
         "label": "Host CPU",
         "source_system": "4texecutive",
@@ -371,6 +379,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         )
 
     extra_label = None
+    breakdown = None
     if widget_instance["type"] == "4thealth.ai_usage_24h":
         points = [
             (h["collected_at"], (h["value"].get("ai_usage_24h") or {}).get("ai_connection_count_24h"))
@@ -390,6 +399,12 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         latest_total = history[-1]["value"].get("firewall_managed_count")
         if isinstance(latest_online, (int, float)) and isinstance(latest_total, (int, float)) and latest_total:
             extra_label = f"{latest_online} / {latest_total} ({round(latest_online / latest_total * 100)}%)"
+    elif widget_instance["type"] == "4thealth.rule_hygiene":
+        points = [
+            (h["collected_at"], (h["value"].get("rule_hygiene") or {}).get("rule_findings_total"))
+            for h in history
+        ]
+        breakdown = (history[-1]["value"].get("rule_hygiene") or {}).get("rule_findings_by_type")
     else:
         points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
 
@@ -411,6 +426,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             "max": max(values) if values else None,
             "extra_label": extra_label,
             "delta": delta,
+            "breakdown": breakdown,
             "collected_at": history[-1]["collected_at"],
         },
         line_rag_value=latest_numeric_value,

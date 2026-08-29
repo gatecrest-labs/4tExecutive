@@ -630,3 +630,45 @@ def test_get_widget_series_line_delta_none_with_no_history():
     result = get_widget_series({"type": "4thealth.rule_count_total", "source_instance": "s1"}, "1d")
 
     assert result["delta"] is None
+
+
+def test_catalog_has_rule_hygiene_widget_with_no_rag():
+    entry = WIDGET_CATALOG["4thealth.rule_hygiene"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "line"
+    assert "rag" not in entry
+
+
+def test_get_widget_series_rule_hygiene_line_points_and_breakdown():
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 100, "rule_findings_by_type": {"shadow": 4, "unhit": 60}}},
+        _iso(600),
+    )
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {"shadow": 5, "unhit": 65}}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.rule_hygiene", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert [v for _, v in result["points"]] == [100, 118]
+    assert result["breakdown"] == {"shadow": 5, "unhit": 65}
+    assert result["delta"] == 18
+    assert "rag" not in result
+
+
+def test_get_widget_series_rule_hygiene_skips_snapshots_without_rollup():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, _iso(10))
+    write_snapshot(
+        "s1", "summary",
+        {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {}}},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.rule_hygiene", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert len(result["points"]) == 1
