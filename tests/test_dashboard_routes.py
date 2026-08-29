@@ -451,7 +451,25 @@ def test_dashboard_renders_delta_annotation(client, tmp_path, monkeypatch):
     response = client.get("/?range=30d")
 
     assert response.status_code == 200
-    assert "▲ +30".encode() in response.data
+    assert "▲ +30 (30d)".encode() in response.data
+
+
+def test_dashboard_renders_delta_no_change_with_explanatory_text(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(60 * 24 * 20))
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(5))
+
+    response = client.get("/?range=30d")
+
+    assert response.status_code == 200
+    assert "— no change (30d)".encode() in response.data
 
 
 def test_dashboard_renders_rule_hygiene_breakdown(client, tmp_path, monkeypatch):
@@ -638,3 +656,45 @@ def test_dashboard_stale_widget_gets_stale_css_class(client, tmp_path, monkeypat
 
     assert response.status_code == 200
     assert b"widget-stale" in response.data
+
+
+def test_dashboard_renders_as_of_in_configured_timezone(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    import app.app_settings as app_settings_module
+    from app.layouts import save_layout
+
+    monkeypatch.setattr(app_settings_module, "SETTINGS_PATH", tmp_path / "app_settings.json")
+    app_settings_module.set_setting("timezone", "America/Chicago")
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-29T17:14:38Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"as of 2026-08-29 12:14:38 CDT" in response.data
+    assert b"2026-08-29T17:14:38Z" not in response.data
+
+
+def test_dashboard_renders_as_of_in_utc_by_default(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    import app.app_settings as app_settings_module
+    from app.layouts import save_layout
+
+    monkeypatch.setattr(app_settings_module, "SETTINGS_PATH", tmp_path / "app_settings.json")
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-29T17:14:38Z")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"as of 2026-08-29 17:14:38 UTC" in response.data
