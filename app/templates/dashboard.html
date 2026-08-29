@@ -69,6 +69,9 @@
           </ul>
           {% endif %}
           <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+          {% if widget.data.rollup_collected_at %}
+          <p class="widget-updated widget-rollup-updated">posture data as of {{ widget.data.rollup_collected_at }}</p>
+          {% endif %}
         {% else %}
           <p class="widget-empty">No data yet</p>
         {% endif %}

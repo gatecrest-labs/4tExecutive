@@ -534,6 +534,51 @@ def test_dashboard_no_posture_strip_when_no_rag_eligible_widgets(client, tmp_pat
     assert b"posture-strip" not in response.data
 
 
+def test_dashboard_posture_freshness_ignores_old_device_review_rollup_timestamp(
+    client, tmp_path, monkeypatch
+):
+    """A 3-hour-old device-review rollup must not make the posture strip read stale.
+
+    The rollup timestamp is by design up to 48h old; posture freshness is
+    about 4tExecutive's poll cadence, so it must aggregate poll times only.
+    """
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    sources_module.add_source(
+        id="s1", system="4thealth", name="A", base_url="https://a", token="t",
+        poll_interval_minutes=15,
+    )
+    save_layout(
+        "alice",
+        [
+            {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"},
+            {"type": "4thealth.device_review_posture", "source_instance": "s1", "size": "2x2", "date_range": "30d"},
+        ],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary",
+        {
+            "hygiene_score": 95,
+            "device_review": {
+                "devices_reviewed": 10, "devices_with_failures": 0,
+                "findings_by_severity": {"critical": 0},
+                "top_failing_checks": [],
+                "collected_at": _iso(180),
+            },
+        },
+        _iso(5),
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"posture-strip" in response.data
+    assert b"posture-stale" not in response.data
+    assert b"oldest data: 5 min ago" in response.data
+
+
 def test_dashboard_posture_strip_hidden_in_edit_mode(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)

@@ -371,7 +371,12 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
                 "chart": "bar",
                 "data": {"Passing": reviewed - failing, "Failing": failing},
                 "top_failing_checks": device_review.get("top_failing_checks") or [],
-                "collected_at": device_review.get("collected_at"),
+                # collected_at is the 4tExecutive poll time, like every other
+                # widget — the dashboard posture strip aggregates it to judge
+                # poll freshness. The rollup's own timestamp is legitimately up
+                # to 48h old by design, so it gets its own key instead.
+                "collected_at": latest["collected_at"],
+                "rollup_collected_at": device_review.get("collected_at"),
             }
             critical = (device_review.get("findings_by_severity") or {}).get("critical") or 0
             result["rag"] = "red" if critical > 0 else "green"

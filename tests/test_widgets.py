@@ -470,8 +470,38 @@ def test_get_widget_series_device_review_posture_computes_pass_fail_and_rag():
 
     assert result["data"] == {"Passing": 35, "Failing": 7}
     assert result["top_failing_checks"] == [{"check": "default_admin", "count": 5}]
-    assert result["collected_at"] == "2026-08-28T06:00:00Z"
+    assert result["collected_at"] == "2026-08-28T09:00:00Z"
+    assert result["rollup_collected_at"] == "2026-08-28T06:00:00Z"
     assert result["rag"] == "red"
+
+
+def test_get_widget_series_device_review_posture_collected_at_is_poll_time_not_rollup_time():
+    """collected_at must stay the 4tExecutive poll time like every other widget.
+
+    The device-review rollup carries its own (legitimately much older, up to
+    48h) timestamp; exposing that as collected_at poisoned the dashboard
+    posture strip's freshness aggregate, which compares collected_at against
+    2 * poll_interval_minutes.
+    """
+    write_snapshot(
+        "s1", "summary",
+        {
+            "device_review": {
+                "devices_reviewed": 20,
+                "devices_with_failures": 2,
+                "findings_by_severity": {"critical": 0},
+                "top_failing_checks": [],
+                "collected_at": "2026-08-26T01:00:00Z",
+            }
+        },
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.device_review_posture", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["collected_at"] == "2026-08-28T09:00:00Z"
+    assert result["rollup_collected_at"] == "2026-08-26T01:00:00Z"
 
 
 def test_get_widget_series_device_review_posture_green_when_no_critical_findings():
