@@ -163,6 +163,8 @@ firewall count. **Shape changed from flat int to nested object:**
 
 4tExecutive handles both shapes for backward compatibility — if your source sends the old flat shape, widgets display it as before; if it sends the new shape with `eol` flags, the dashboard also displays which versions are end-of-life.
 
+**Freshness note**: The `version_breakdown` widget currently has no staleness tracking — there is no `collected_at` timestamp for this field and `_is_stale()` returns `None` for it (no entry in `_FIELD_GROUP_FRESHNESS`).
+
 `device_review` is a nested object (absent/null until the first scheduled
 device-review rollup run) containing configuration posture details:
 
@@ -177,6 +179,8 @@ device-review rollup run) containing configuration posture details:
   }
 }
 ```
+
+The nested `collected_at` timestamp (inside `device_review`) drives this widget's staleness tracking — **not** `device_sweep_collected_at`. The Configuration Posture widget considers data stale if the `device_review.collected_at` timestamp is older than 2880 minutes (48 hours), per the design doc's expected refresh interval (see `_FIELD_GROUP_FRESHNESS` in `app/widgets.py`).
 
 `rule_hygiene` is a nested object (absent/null until the first scheduled
 hygiene-sweep rollup run) containing rule quality metrics:
@@ -205,9 +209,9 @@ breakdown:
 ```
 
 **Sweep status and collection timestamps** — freshness tracking for async rollup jobs:
-- `device_sweep_status` — current status of the device-sweep job ("idle", "running", "completed", or "failed")
-- `hygiene_sweep_status` — current status of the hygiene-sweep job ("idle", "running", "completed", or "failed")
-- `device_sweep_collected_at` — ISO 8601 timestamp of the latest completed device sweep (collected data freshness for device_review, version_breakdown, version_compliance_pct, pending_config_diff_count, firewall counts, etc.)
+- `device_sweep_status` — current status of the device-sweep job (opaque string value from the companion 4thealth+ API; 4tExecutive does not validate or enforce a specific enum of status values)
+- `hygiene_sweep_status` — current status of the hygiene-sweep job (opaque string value from the companion 4thealth+ API; 4tExecutive does not validate or enforce a specific enum of status values)
+- `device_sweep_collected_at` — ISO 8601 timestamp of the latest completed device sweep (collected data freshness for version_compliance_pct, pending_config_diff_count, firewall counts, etc.; see `_FIELD_GROUP_FRESHNESS` in `app/widgets.py` for which widgets use this timestamp and their staleness thresholds)
 - `hygiene_sweep_collected_at` — ISO 8601 timestamp of the latest completed hygiene sweep (collected data freshness for hygiene_score and rule_hygiene)
 - `rule_count_collected_at` — ISO 8601 timestamp of the latest rule count collection (freshness for rule_count_total)
 
