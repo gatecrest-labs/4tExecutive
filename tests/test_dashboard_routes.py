@@ -573,3 +573,23 @@ def test_dashboard_renders_ai_usage_by_feature(client, tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert b"device_review_summary" in response.data
+
+
+def test_dashboard_stale_widget_gets_stale_css_class(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    metrics_db.write_snapshot(
+        "s1", "summary", {"hygiene_score": 90, "hygiene_sweep_collected_at": old_ts}, "2026-08-28T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"widget-stale" in response.data

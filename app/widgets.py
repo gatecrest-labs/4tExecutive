@@ -37,6 +37,43 @@ def _downsample(points: list[tuple[str, float]], max_points: int = 80) -> list[t
     return bucketed
 
 
+# Maps a widget type to the payload's per-field-group freshness key and the
+# threshold (minutes) past which that group's data is considered stale --
+# 2x the group's expected refresh interval, per design doc section 8.
+_FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
+    "4thealth.hygiene_score": ("hygiene_sweep_collected_at", 120),
+    "4thealth.version_compliance": ("device_sweep_collected_at", 30),
+    "4thealth.pending_config_diffs": ("device_sweep_collected_at", 30),
+    "4thealth.fleet_availability": ("device_sweep_collected_at", 30),
+    "4thealth.firewall_online_count": ("device_sweep_collected_at", 30),
+    "4thealth.firewall_managed_count": ("device_sweep_collected_at", 30),
+    "4thealth.rule_count_total": ("rule_count_collected_at", 120),
+    "4thealth.rule_hygiene": ("hygiene_sweep_collected_at", 120),
+    "4thealth.device_review_posture": ("device_review", 2880),
+}
+
+
+def _is_stale(value: dict, widget_type: str) -> bool | None:
+    """Return whether the widget type's underlying field group is stale, or
+    None if this widget type has no known field-group freshness key."""
+    freshness_key = _FIELD_GROUP_FRESHNESS.get(widget_type)
+    if freshness_key is None:
+        return None
+    key, threshold_minutes = freshness_key
+    if key == "device_review":
+        collected_at = (value.get("device_review") or {}).get("collected_at")
+    else:
+        collected_at = value.get(key)
+    if not collected_at:
+        return None
+    try:
+        collected_dt = datetime.fromisoformat(collected_at)
+    except ValueError:
+        return None
+    age_minutes = (datetime.now(UTC) - collected_dt).total_seconds() / 60
+    return age_minutes > threshold_minutes
+
+
 WIDGET_CATALOG: dict[str, dict] = {
     "4thealth.hygiene_score": {
         "label": "Hygiene Score",
@@ -281,6 +318,9 @@ def get_widget_value(widget_instance: dict) -> dict | None:
         "value": latest["value"].get(entry["field"]),
         "collected_at": latest["collected_at"],
     }
+    stale = _is_stale(latest["value"], widget_instance["type"])
+    if stale is not None:
+        result["stale"] = stale
     return _attach_rag(widget_instance["type"], entry, result)
 
 
@@ -420,22 +460,21 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
     values = [v for _, v in points]
     delta = round(values[-1] - values[0], 2) if len(values) >= 2 else None
 
-    return _attach_rag(
-        widget_instance["type"],
-        entry,
-        {
-            "chart": "line",
-            "points": points,
-            "min": min(values) if values else None,
-            "max": max(values) if values else None,
-            "extra_label": extra_label,
-            "delta": delta,
-            "breakdown": breakdown,
-            "by_feature": by_feature,
-            "collected_at": history[-1]["collected_at"],
-        },
-        line_rag_value=latest_numeric_value,
-    )
+    stale = _is_stale(history[-1]["value"], widget_instance["type"])
+    result = {
+        "chart": "line",
+        "points": points,
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
+        "extra_label": extra_label,
+        "delta": delta,
+        "breakdown": breakdown,
+        "by_feature": by_feature,
+        "collected_at": history[-1]["collected_at"],
+    }
+    if stale is not None:
+        result["stale"] = stale
+    return _attach_rag(widget_instance["type"], entry, result, line_rag_value=latest_numeric_value)
 
 
 def source_name(source_instance: str) -> str:

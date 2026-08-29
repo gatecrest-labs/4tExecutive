@@ -119,6 +119,9 @@ th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid var
 .rag-amber { border-left: 4px solid var(--status-amber); }
 .rag-red { border-left: 4px solid var(--status-failed); }
 
+.widget-stale { opacity: 0.85; }
+.widget-stale .widget-updated { color: var(--status-amber); }
+
 .widget-value {
   margin: 0;
   font-size: 1.6rem;

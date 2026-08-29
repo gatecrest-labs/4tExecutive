@@ -703,3 +703,43 @@ def test_get_widget_series_ai_usage_by_feature_absent_when_not_in_payload():
     result = get_widget_series(widget, "1d")
 
     assert result["by_feature"] is None
+
+
+def test_get_widget_value_stale_true_when_field_group_collected_at_old():
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    write_snapshot(
+        "s1", "summary",
+        {"hygiene_score": 90, "hygiene_sweep_collected_at": old_ts},
+        "2026-08-28T09:00:00Z",  # poll-time collected_at is fresh; field-group collected_at is stale
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["stale"] is True
+
+
+def test_get_widget_value_stale_false_when_field_group_collected_at_recent():
+    recent_ts = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    write_snapshot(
+        "s1", "summary",
+        {"hygiene_score": 90, "hygiene_sweep_collected_at": recent_ts},
+        "2026-08-28T09:00:00Z",
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert get_widget_value(widget)["stale"] is False
+
+
+def test_get_widget_value_no_stale_key_when_field_group_collected_at_absent():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    assert "stale" not in get_widget_value(widget)
+
+
+def test_get_widget_value_no_stale_key_for_widget_type_without_a_field_group():
+    write_snapshot("s1", "summary", {"adom_count": 4}, "2026-08-28T09:00:00Z")
+    widget = {"type": "4thealth.adom_count", "source_instance": "s1"}
+
+    assert "stale" not in get_widget_value(widget)
