@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for
 
+from app.app_settings import get_setting, set_setting
 from app.auth import create_user, delete_user, get_user
 from app.collector import poll_now, poll_status
 from app.decorators import tab_required
 from app.groups import get_user_groups, list_group_names, set_user_groups
+from app.local_time import DEFAULT_TIMEZONE, is_valid_timezone
 from app.sources import add_source, delete_source, list_sources
 from app.widgets import DEFAULT_RANGE, WIDGET_CATALOG, annotate
 
@@ -123,6 +125,30 @@ def delete_user_route(username):
     delete_user(username)
     set_user_groups(username, [])
     return redirect(url_for("admin.users"))
+
+
+def _render_settings(error: str | None = None):
+    return render_template(
+        "admin/settings.html",
+        timezone=get_setting("timezone", DEFAULT_TIMEZONE),
+        error=error,
+    )
+
+
+@bp.route("/settings", methods=["GET"])
+@tab_required("admin")
+def settings():
+    return _render_settings()
+
+
+@bp.route("/settings", methods=["POST"])
+@tab_required("admin")
+def update_settings_route():
+    tz = request.form.get("timezone", "").strip()
+    if not is_valid_timezone(tz):
+        return _render_settings(error=f'"{tz}" is not a recognized IANA timezone name (e.g. "America/Chicago", "UTC").')
+    set_setting("timezone", tz)
+    return redirect(url_for("admin.settings"))
 
 
 @bp.route("/system", methods=["GET"])

@@ -2,7 +2,7 @@
 {% import "_charts.html" as charts %}
 {% block content %}
 <h1>Admin — System</h1>
-<p><a href="{{ url_for('admin.sources') }}">Manage sources →</a></p>
+<p><a href="{{ url_for('admin.sources') }}">Manage sources →</a> · <a href="{{ url_for('admin.users') }}">Manage users →</a> · <a href="{{ url_for('admin.settings') }}">Settings →</a></p>
 <div class="widget-grid">
   {% for widget in widgets %}
     <div class="widget widget-{{ widget.size|default('1x1') }}">
@@ -10,7 +10,7 @@
       {% if widget.data and widget.data.chart == 'line' %}
         {% if widget.data.points %}
           {{ charts.line_chart(widget.data.points, widget.data.min, widget.data.max) }}
-          <p class="widget-updated">as of {{ widget.data.collected_at }}</p>
+          <p class="widget-updated">as of {{ widget.data.collected_at | local_time }}</p>
         {% else %}
           <p class="widget-empty">No data yet</p>
         {% endif %}

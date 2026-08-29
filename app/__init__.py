@@ -102,6 +102,13 @@ def create_app(
 
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
+    from app.app_settings import get_setting
+    from app.local_time import DEFAULT_TIMEZONE, format_local
+
+    flask_app.jinja_env.filters["local_time"] = lambda iso_ts: format_local(
+        iso_ts, get_setting("timezone", DEFAULT_TIMEZONE)
+    )
+
     if not testing:
         from app.collector import init_scheduler
 

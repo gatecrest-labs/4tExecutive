@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Admin — Sources</h1>
-<p><a href="{{ url_for('admin.users') }}">Manage users →</a> · <a href="{{ url_for('admin.system') }}">System →</a></p>
+<p><a href="{{ url_for('admin.users') }}">Manage users →</a> · <a href="{{ url_for('admin.system') }}">System →</a> · <a href="{{ url_for('admin.settings') }}">Settings →</a></p>
 <table>
   <thead><tr><th>ID</th><th>System</th><th>Name</th><th>Enabled</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>
@@ -15,9 +15,9 @@
       <td>{{ "Unverified (self-signed)" if not source.get("verify_tls", True) else "Verified" }}</td>
       <td>
         {% if status.status == "ok" %}
-          <span class="status-ok" title="Last successful poll: {{ status.at }}">● OK</span>
+          <span class="status-ok" title="Last successful poll: {{ status.at | local_time }}">● OK</span>
         {% elif status.status == "failed" %}
-          <span class="status-failed" title="{{ status.at }}">● Failed — {{ status.detail }}</span>
+          <span class="status-failed" title="{{ status.at | local_time }}">● Failed — {{ status.detail }}</span>
         {% else %}
           <span class="status-pending">● Not yet polled</span>
         {% endif %}

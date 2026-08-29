@@ -200,3 +200,47 @@ def test_admin_system_page_renders_host_metrics(client, tmp_path, monkeypatch):
     assert b"Host CPU" in response.data
     assert b"Host Memory" in response.data
     assert b"Host Disk" in response.data
+
+
+def test_admin_settings_page_requires_admin_tab(client):
+    with client.session_transaction() as sess:
+        sess["username"] = "alice"
+    response = client.get("/admin/settings")
+    assert response.status_code == 403
+
+
+def test_admin_settings_page_shows_default_utc(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    import app.app_settings as app_settings_module
+
+    monkeypatch.setattr(app_settings_module, "SETTINGS_PATH", tmp_path / "app_settings.json")
+
+    response = client.get("/admin/settings")
+
+    assert response.status_code == 200
+    assert b'value="UTC"' in response.data
+
+
+def test_update_timezone_setting_via_post(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    import app.app_settings as app_settings_module
+
+    monkeypatch.setattr(app_settings_module, "SETTINGS_PATH", tmp_path / "app_settings.json")
+
+    response = client.post("/admin/settings", data={"timezone": "America/Chicago"}, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert app_settings_module.get_setting("timezone") == "America/Chicago"
+
+
+def test_update_timezone_setting_rejects_invalid_timezone(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    import app.app_settings as app_settings_module
+
+    monkeypatch.setattr(app_settings_module, "SETTINGS_PATH", tmp_path / "app_settings.json")
+
+    response = client.post("/admin/settings", data={"timezone": "Not/A_Real_Zone"}, follow_redirects=False)
+
+    assert response.status_code == 200
+    assert b"not a recognized IANA timezone" in response.data
+    assert app_settings_module.get_setting("timezone") is None
