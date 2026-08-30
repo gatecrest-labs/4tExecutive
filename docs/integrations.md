@@ -105,10 +105,43 @@ object, the same way `version_breakdown` carries a dict instead of a scalar.
 
 **`4tlog`**:
 
-| JSON key            | Widget                  |
-|-----------------------|--------------------------|
-| `faz_health`          | FortiAnalyzer Health     |
-| `log_volume_trend`    | Log Volume Trend         |
+| JSON key                            | Widget                  |
+|--------------------------------------|--------------------------|
+| `faz_health`                        | FortiAnalyzer Health     |
+| `log_volume_events_per_sec`          | Log Volume Trend         |
+| `devices_logging` / `devices_silent` | Silent Devices           |
+
+`log_volume_trend` (the field name) is retired — it was never implemented by any 4tlog release
+(see the original recommendations doc, section 1.4), so this is not a breaking change to a real
+payload, just a rename before the field's first real implementation.
+
+Example response body from a 4tlog instance:
+
+```json
+{
+  "schema_version": 1,
+  "faz_targets_total": 3,
+  "faz_targets_healthy": 3,
+  "faz_disk_used_pct": 61.2,
+  "devices_logging": 38,
+  "devices_silent": 2,
+  "silent_device_threshold_minutes": 60,
+  "log_volume_events_per_sec": 812.4,
+  "log_stats_collected_at": "2026-08-29T18:00:00Z"
+}
+```
+
+- `faz_health` is not shown above — it is not yet emitted by 4tlog's summary payload (tracked
+  separately; the widget currently reads whatever a source chooses to send under that key, if
+  anything, and displays "No data yet" otherwise).
+- `devices_logging`/`devices_silent` are flat top-level integers (not nested, unlike
+  `4thealth`'s `device_review`) — a 4tlog instance is a single source of these fleet-wide counts,
+  there's no per-check breakdown to nest.
+- `silent_device_threshold_minutes` is informational only — 4tExecutive does not use it in
+  computation, it only exists so an operator reading the raw payload knows what threshold
+  produced the silent count.
+- `log_stats_collected_at` drives this widget's staleness (see `_FIELD_GROUP_FRESHNESS` in
+  `app/widgets.py`): stale past 10 minutes (2x 4tlog's default 5-minute logstats poll interval).
 
 Example response body from a 4thealth instance (minimal):
 
