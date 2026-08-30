@@ -872,3 +872,34 @@ def test_get_widget_value_no_stale_key_for_widget_type_without_a_field_group():
     widget = {"type": "4thealth.adom_count", "source_instance": "s1"}
 
     assert "stale" not in get_widget_value(widget)
+
+
+def test_catalog_log_volume_trend_is_a_line_chart_on_new_field():
+    entry = WIDGET_CATALOG["4tlog.log_volume_trend"]
+    assert entry["chart_type"] == "line"
+    assert entry["field"] == "log_volume_events_per_sec"
+
+
+def test_get_widget_series_log_volume_trend_charts_the_new_field():
+    write_snapshot("s1", "summary", {"log_volume_events_per_sec": 812.4}, _iso(600))
+    write_snapshot("s1", "summary", {"log_volume_events_per_sec": 950.0}, _iso(5))
+    widget = {"type": "4tlog.log_volume_trend", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert [v for _, v in result["points"]] == [812.4, 950.0]
+    assert result["delta"] == pytest.approx(137.6)
+
+
+def test_get_widget_series_log_volume_trend_stale_from_log_stats_collected_at():
+    old_ts = (datetime.now(UTC) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    write_snapshot(
+        "s1", "summary",
+        {"log_volume_events_per_sec": 100.0, "log_stats_collected_at": old_ts},
+        "2026-08-29T09:00:00Z",
+    )
+    widget = {"type": "4tlog.log_volume_trend", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["stale"] is True

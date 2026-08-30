@@ -50,6 +50,7 @@ _FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
     "4thealth.rule_count_total": ("rule_count_collected_at", 120),
     "4thealth.rule_hygiene": ("hygiene_sweep_collected_at", 120),
     "4thealth.device_review_posture": ("device_review", 2880),
+    "4tlog.log_volume_trend": ("log_stats_collected_at", 10),
 }
 
 
@@ -215,8 +216,9 @@ WIDGET_CATALOG: dict[str, dict] = {
         "label": "Log Volume Trend",
         "source_system": "4tlog",
         "metric_type": "summary",
-        "field": "log_volume_trend",
+        "field": "log_volume_events_per_sec",
         "default_size": "2x2",
+        "chart_type": "line",
     },
 }
 
