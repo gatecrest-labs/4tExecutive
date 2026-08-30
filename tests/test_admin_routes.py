@@ -142,7 +142,7 @@ def test_add_source_non_numeric_poll_interval_shows_error_instead_of_500(client,
     )
 
     assert response.status_code == 200
-    assert b"error" in response.data.lower()
+    assert b"must be a whole number" in response.data.lower()
     assert sources_module.get_source("s1") is None
 
 
