@@ -1,6 +1,9 @@
 # 4tExecutive
 
-<img alt="4tExecutive logo" src="logo.svg" width="240">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="logo-dark.svg">
+  <img alt="4tExecutive logo" src="logo.svg" width="240">
+</picture>
 
 An executive-facing dashboard that aggregates metrics from an organization's
 existing FortiGate-related tools — `4thealth` / `4thealth-plus` and `4tlog`
