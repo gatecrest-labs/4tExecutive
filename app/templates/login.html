@@ -1,21 +1,50 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="auth-page">
-  <div class="auth-card">
-    <h1>4tExecutive</h1>
-    {% if error %}<p class="error">{{ error }}</p>{% endif %}
-    <form method="post">
+<!doctype html>
+<html data-theme="{{ request.cookies.get('theme', 'light') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Login — 4tExecutive</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="login-page">
+<div class="login-card">
+  <h1 class="login-title">4tExecutive</h1>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('auth.login') }}" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" class="form-control"
+             autocomplete="username" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" class="form-control"
+             autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Log In</button>
+  </form>
+
+  <div class="login-theme-row">
+    <form method="post" action="{{ url_for('theme.set_theme') }}" style="display:inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="form-field">
-        <label for="username">Username</label>
-        <input class="form-input" id="username" type="text" name="username" autofocus>
-      </div>
-      <div class="form-field">
-        <label for="password">Password</label>
-        <input class="form-input" id="password" type="password" name="password">
-      </div>
-      <button class="btn-primary" type="submit">Log in</button>
+      <input type="hidden" name="next" value="{{ request.path }}">
+      {% if request.cookies.get('theme', 'light') == 'dark' %}
+        <input type="hidden" name="theme" value="light">
+        <button type="submit" class="btn btn-sm btn-ghost">Light Mode</button>
+      {% else %}
+        <input type="hidden" name="theme" value="dark">
+        <button type="submit" class="btn btn-sm btn-ghost">Dark Mode</button>
+      {% endif %}
     </form>
   </div>
 </div>
-{% endblock %}
+</body>
+</html>

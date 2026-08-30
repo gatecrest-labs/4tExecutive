@@ -9,10 +9,10 @@ def test_login_page_renders(client):
     assert b"4tExecutive" in response.data
 
 
-def test_login_page_uses_auth_card_layout(client):
+def test_login_page_uses_login_card_layout(client):
     response = client.get("/login")
     assert response.status_code == 200
-    assert b'class="auth-card"' in response.data
+    assert b'class="login-card"' in response.data
 
 
 def test_login_with_valid_credentials_redirects_and_sets_session(client, tmp_path, monkeypatch):
