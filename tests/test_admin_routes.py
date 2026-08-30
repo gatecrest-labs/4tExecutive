@@ -1,10 +1,27 @@
 import json
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
 
 import app.groups as groups_module
 import app.sources as sources_module
+import app.widgets as widgets_module
+
+
+def _freeze_widgets_clock(monkeypatch, at):
+    """Pin app.widgets' notion of "now" so range-window math (get_widget_series'
+    "since = now - range_delta") is independent of the real wall clock. Without
+    this, a hardcoded snapshot timestamp like "2026-08-27T10:00:00Z" silently
+    falls outside a "1d" range once the actual system date moves past it.
+    """
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return at if tz is None else at.astimezone(tz)
+
+    monkeypatch.setattr(widgets_module, "datetime", _FrozenDatetime)
 
 
 @pytest.fixture(autouse=True)
@@ -244,3 +261,45 @@ def test_update_timezone_setting_rejects_invalid_timezone(client, tmp_path, monk
     assert response.status_code == 200
     assert b"not a recognized IANA timezone" in response.data
     assert app_settings_module.get_setting("timezone") is None
+
+
+def test_host_metrics_api_requires_admin_tab(client):
+    with client.session_transaction() as sess:
+        sess["username"] = "alice"
+    response = client.get("/admin/api/host-metrics?range=1d")
+    assert response.status_code == 403
+
+
+def test_host_metrics_api_returns_series_for_all_three_metrics(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    from app import metrics_db
+
+    metrics_db.init_db()
+    metrics_db.write_snapshot(
+        "_self", "summary", {"cpu_percent": 12.5, "memory_percent": 40, "disk_percent": 55}, "2026-08-27T10:00:00Z"
+    )
+    _freeze_widgets_clock(monkeypatch, datetime.fromisoformat("2026-08-27T12:00:00+00:00"))
+
+    response = client.get("/admin/api/host-metrics?range=1d")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["cpu"] == [{"ts": 1787824800, "v": 12.5}]
+    assert data["mem"] == [{"ts": 1787824800, "v": 40}]
+    assert data["disk"] == [{"ts": 1787824800, "v": 55}]
+
+
+def test_host_metrics_api_defaults_invalid_range_to_default(client, tmp_path, monkeypatch):
+    _login_as_admin(client, tmp_path, monkeypatch)
+    from app import metrics_db
+
+    metrics_db.init_db()
+    metrics_db.write_snapshot(
+        "_self", "summary", {"cpu_percent": 5, "memory_percent": 10, "disk_percent": 15}, "2026-08-27T10:00:00Z"
+    )
+    _freeze_widgets_clock(monkeypatch, datetime.fromisoformat("2026-08-27T12:00:00+00:00"))
+
+    response = client.get("/admin/api/host-metrics?range=not-a-real-range")
+
+    assert response.status_code == 200
+    assert response.get_json()["cpu"] == [{"ts": 1787824800, "v": 5}]

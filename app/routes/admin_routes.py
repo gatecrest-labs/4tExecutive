@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, abort, redirect, render_template, request, session, url_for
+from datetime import datetime
+
+from flask import Blueprint, abort, jsonify, redirect, render_template, request, session, url_for
 
 from app.app_settings import get_setting, set_setting
 from app.auth import create_user, delete_user, get_user
@@ -11,6 +13,7 @@ from app.decorators import tab_required
 from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.local_time import DEFAULT_TIMEZONE, is_valid_timezone
 from app.sources import add_source, delete_source, list_sources
+from app.widgets import DEFAULT_RANGE, RANGES, get_widget_series
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -149,3 +152,28 @@ def update_settings_route():
 @tab_required("admin")
 def system():
     return _render_admin("system")
+
+
+_HOST_METRICS_KEYS = {
+    "4texecutive.cpu_percent": "cpu",
+    "4texecutive.memory_percent": "mem",
+    "4texecutive.disk_percent": "disk",
+}
+
+
+@bp.route("/api/host-metrics", methods=["GET"])
+@tab_required("admin")
+def host_metrics_api():
+    range_key = request.args.get("range", DEFAULT_RANGE)
+    if range_key not in RANGES:
+        range_key = DEFAULT_RANGE
+
+    result = {}
+    for widget_type, short_key in _HOST_METRICS_KEYS.items():
+        series = get_widget_series({"type": widget_type, "source_instance": "_self"}, range_key)
+        points = (series or {}).get("points") or []
+        result[short_key] = [
+            {"ts": int(datetime.fromisoformat(ts).timestamp()), "v": v}
+            for ts, v in points
+        ]
+    return jsonify(result)
