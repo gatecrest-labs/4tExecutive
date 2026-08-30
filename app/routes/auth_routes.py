@@ -24,7 +24,7 @@ def login():
     return render_template("login.html", error=error)
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["GET", "POST"])
 def logout():
     session.pop("username", None)
     return redirect(url_for("auth.login"))

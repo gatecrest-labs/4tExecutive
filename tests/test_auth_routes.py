@@ -57,6 +57,17 @@ def test_logout_clears_session(client):
         assert "username" not in sess
 
 
+def test_logout_via_post_clears_session(client):
+    with client.session_transaction() as sess:
+        sess["username"] = "alice"
+
+    response = client.post("/logout", follow_redirects=False)
+
+    assert response.status_code == 302
+    with client.session_transaction() as sess:
+        assert "username" not in sess
+
+
 def _hash(password: str) -> str:
     import bcrypt
 
