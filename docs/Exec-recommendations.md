@@ -61,9 +61,20 @@ The recent chart/time-range work gives it motion. But as an executive surface it
 | 3.3 | **Log volume trend for real** | 4tlog | Same logstats collection, aggregated fleet-wide per interval, persisted. Replaces the aspirational `log_volume_trend` string with a numeric series 4tExecutive can chart natively. |
 | 3.4 | **Device config backup age** | 4thealth+ | Query FortiManager revision history per device; expose `devices_backup_ok` / `devices_backup_stale` (>N days). Makes the backup widget honest (see 1.4). |
 | 3.5 | **Certificate expiry** | 4thealth+ | Collect admin/SSL certs per device; expose `certs_expiring_30d`, `certs_expired`. Certificate surprises are a classic director embarrassment; cheap to collect from the API already in use. |
-| 3.6 | **License / support contract expiry** | 4thealth+ | FortiCare/FortiGuard contract data via FMG; `contracts_expiring_90d`. Budget-cycle visibility — the one widget that talks to procurement. |
+| 3.6 | ~~License / support contract expiry~~ | 4thealth+ | **Superseded by Tier 4 (4.2)** — see below. The premise here ("FortiCare/FortiGuard contract data via FMG") turned out to be wrong: FortiManager does not proxy FortiCare contract data at all. Kept as a struck-through row rather than deleted so old links/discussion referencing "3.6" still resolve to something. |
 | 3.7 | **Composite Security Posture Score** | 4thealth+ (compute), 4tExecutive (display) | Weighted composite of hygiene score, device-review pass rate, PSIRT exposure, version compliance — with the weights visible and configurable. Only build this after 2.1–2.3 exist; a composite over missing inputs is theater. |
 | 3.8 | **Cache persistence & consistency in 4thealth+** | 4thealth+ | Back the executive-summary caches with SQLite (or pin the sweeps to one worker) so restarts don't blank the API and multi-worker deployments answer consistently. A product requirement more than a feature. |
+
+### Tier 4 — Device lifecycle: hardware end-of-support and paid support contracts
+
+Investigation (2026-08-30) into whether 4thealth+ could answer *"which of our firewalls are running out of vendor support — and when?"* — a question distinct from 2.7's software-version EOL flagging, and one directors are asked at budget time every year.
+
+| # | Recommendation | System | Detail |
+|---|---|---|---|
+| 4.1 | **Hardware end-of-support (model EOS) flagging** | 4thealth+ | Cheap and high-value: device model (`platform_str`) and serial are **already collected** in the same FortiManager `dvmdb` calls that supply version/conf_status today (`app/fmg_client.py`, consumed in `app/pending_status_cache.py:141-149`, `app/map_cache.py`, `app/versions_cache.py`). No new API integration needed — only a new static table. Follow the exact pattern `app/version_eol.py` already established for FortiOS software versions: a module citing Fortinet's published EOL/EOS-by-model schedule, a small lookup (`_EOL_MODELS: dict[str, date]` keyed by platform string), and an `is_hw_eol(model, as_of=None)` function that returns `False`/unknown for any model not in the table — absence must never render as a false "still supported," but it must also never render as a false "unsupported." Expose `devices_hw_eos_soon` (e.g. within 12 months) / `devices_hw_eos` counts in the executive payload; 4tExecutive gets a widget analogous to the version-compliance one. |
+| 4.2 | **Paid support contract (FortiCare) expiry** | 4thealth+ | Genuinely new integration, **not** an FMG call — confirmed by reading `fmg_client.py` in full: no FortiCare/FortiGuard contract or license endpoint exists anywhere in the FMG API surface this app uses. This requires a separate FortiCare REST API client (its own base URL, its own credentials/API key, likely its own poll cadence since FortiCare rate-limits differ from FMG). Scope this as its own small collector before promising a date: confirm asset-registration mapping (FortiCare keys off serial number, which 4thealth+ already has per-device) and confirm what auth FortiCare's API actually requires for this deployment's account tier. Expose `contracts_expiring_90d`, `contracts_expired`, and ideally `support_level` per device. This is the item Fortinet resellers get asked about every renewal cycle — the "talks to procurement" widget from the old 3.6, now scoped correctly. |
+
+Suggested order within Tier 4: **4.1 before 4.2** — 4.1 needs no new integration and can ship in the same wave as 2.7 (software version EOL); 4.2 needs its own discovery spike (does this org even have FortiCare API access enabled? what does the response schema actually look like?) before a real design spec is worth writing.
 
 ---
 
@@ -72,8 +83,9 @@ The recent chart/time-range work gives it motion. But as an executive surface it
 1. **Tier 1 complete** (one 4tExecutive release) — RAG thresholds, posture strip, widget cleanup. Biggest perceived-value-per-effort in the list.
 2. **2.1 + 2.3** (device review rollup, PSIRT exposure) — turns on the posture story with data that already exists.
 3. **3.1 + 3.2** (4tlog API + silent devices) — brings the third system into the pane and adds the standout differentiator.
-4. **2.2, 2.4–2.7** as a hardening/depth wave.
-5. **3.4–3.8** as roadmap items, 3.7 last.
+4. **2.2, 2.4–2.7, 4.1** as a hardening/depth wave — 4.1 (hardware EOS) rides along with 2.7 (software EOL) since both are static-table lookups over data already collected.
+5. **3.4, 3.5, 3.8** as roadmap items.
+6. **4.2** (FortiCare contract expiry) after a short discovery spike confirms API access and schema; **3.7** last, after 2.1–2.3 exist.
 
 ## 4. Tier 1 implementation notes
 
