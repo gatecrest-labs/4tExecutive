@@ -50,7 +50,11 @@ _FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
     "4thealth.rule_count_total": ("rule_count_collected_at", 120),
     "4thealth.rule_hygiene": ("hygiene_sweep_collected_at", 120),
     "4thealth.device_review_posture": ("device_review", 2880),
-    "4tlog.log_volume_trend": ("log_stats_collected_at", 10),
+    # 40 = 2x the realistic worst-case age: 4tlog's 5-minute logstats collection
+    # interval plus 4tExecutive's own default 15-minute poll interval (this
+    # timestamp only advances when 4tExecutive polls the source), not just
+    # 4tlog's internal collection cadence.
+    "4tlog.log_volume_trend": ("log_stats_collected_at", 40),
 }
 
 
@@ -240,13 +244,13 @@ def default_layout() -> list[dict]:
     (4texecutive.*) are excluded — they live on the Admin > System page,
     not the executive dashboard.
 
-    Three widgets are conditional. The AI usage widget is only included when
+    Four widgets are conditional. The AI usage widget is only included when
     the source's latest snapshot reports ai_enabled: true, since most 4thealth
     instances won't have AI turned on and an always-empty tile isn't useful
-    default clutter. The Tier 2 rollup widgets (device_review_posture,
-    rule_hygiene) are only included when the latest snapshot actually carries
-    that rollup — a 4thealth+ release that hasn't shipped Tier 2 would
-    otherwise get two tiles reading "No data yet" forever, changing its
+    default clutter. The rollup widgets (device_review_posture, rule_hygiene,
+    silent_devices) are only included when the latest snapshot actually
+    carries that rollup — a source release that hasn't shipped the rollup yet
+    would otherwise get a tile reading "No data yet" forever, changing its
     dashboard for the worse just because 4tExecutive upgraded.
 
     A user who manually saves a layout containing any of them still sees it

@@ -141,7 +141,10 @@ Example response body from a 4tlog instance:
   computation, it only exists so an operator reading the raw payload knows what threshold
   produced the silent count.
 - `log_stats_collected_at` drives this widget's staleness (see `_FIELD_GROUP_FRESHNESS` in
-  `app/widgets.py`): stale past 10 minutes (2x 4tlog's default 5-minute logstats poll interval).
+  `app/widgets.py`): stale past 40 minutes (2x the realistic worst-case age of 4tlog's 5-minute
+  logstats collection interval plus 4tExecutive's own default 15-minute poll interval — this
+  timestamp only advances when 4tExecutive polls the source, not on 4tlog's internal cadence
+  alone).
 
 Example response body from a 4thealth instance (minimal):
 

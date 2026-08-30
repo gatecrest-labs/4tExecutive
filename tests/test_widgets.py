@@ -892,7 +892,7 @@ def test_get_widget_series_log_volume_trend_charts_the_new_field():
 
 
 def test_get_widget_series_log_volume_trend_stale_from_log_stats_collected_at():
-    old_ts = (datetime.now(UTC) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old_ts = (datetime.now(UTC) - timedelta(minutes=50)).strftime("%Y-%m-%dT%H:%M:%SZ")
     write_snapshot(
         "s1", "summary",
         {"log_volume_events_per_sec": 100.0, "log_stats_collected_at": old_ts},
@@ -938,6 +938,25 @@ def test_get_widget_series_silent_devices_green_when_none_silent():
 
 def test_get_widget_series_silent_devices_no_data_when_absent():
     write_snapshot("s1", "summary", {"faz_targets_total": 3}, "2026-08-29T09:00:00Z")
+    widget = {"type": "4tlog.silent_devices", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert "rag" not in result
+
+
+def test_get_widget_series_log_volume_trend_no_data_for_pre_tier3_snapshot():
+    write_snapshot("s1", "summary", {"faz_health": "ok"}, _iso(5))
+    widget = {"type": "4tlog.log_volume_trend", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["points"] == []
+
+
+def test_get_widget_series_silent_devices_no_data_for_pre_tier3_snapshot():
+    write_snapshot("s1", "summary", {"faz_health": "ok"}, _iso(5))
     widget = {"type": "4tlog.silent_devices", "source_instance": "s1"}
 
     result = get_widget_series(widget, "30d")

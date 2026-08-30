@@ -40,6 +40,13 @@ _DEMO_SOURCES = [
     },
 ]
 
+_SIZE_CYCLE = ["1x1", "2x1", "2x2"]
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 _DEMO_SNAPSHOT_VALUES = {
     "demo-4thealth": {
         "hygiene_score": 94,
@@ -50,15 +57,13 @@ _DEMO_SNAPSHOT_VALUES = {
     },
     "demo-4tlog": {
         "faz_health": "Healthy (2 of 2 targets up)",
-        "log_volume_trend": "12.4M events/day (+3% week over week)",
+        "log_volume_events_per_sec": 812.4,
+        "devices_logging": 38,
+        "devices_silent": 2,
+        "silent_device_threshold_minutes": 60,
+        "log_stats_collected_at": _now_iso(),
     },
 }
-
-_SIZE_CYCLE = ["1x1", "2x1", "2x2"]
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def seed() -> None:
