@@ -220,6 +220,15 @@ WIDGET_CATALOG: dict[str, dict] = {
         "default_size": "2x2",
         "chart_type": "line",
     },
+    "4tlog.silent_devices": {
+        "label": "Silent Devices",
+        "source_system": "4tlog",
+        "metric_type": "summary",
+        "field": "devices_logging",
+        "default_size": "1x1",
+        "chart_type": "bar",
+        "rag": {"direction": "higher", "green": 0, "amber": 0},
+    },
 }
 
 
@@ -255,7 +264,11 @@ def default_layout() -> list[dict]:
                 latest = get_latest(source["id"], entry["metric_type"])
                 if latest is None or not latest["value"].get("ai_enabled"):
                     continue
-            elif widget_type in ("4thealth.device_review_posture", "4thealth.rule_hygiene"):
+            elif widget_type in (
+                "4thealth.device_review_posture",
+                "4thealth.rule_hygiene",
+                "4tlog.silent_devices",
+            ):
                 latest = get_latest(source["id"], entry["metric_type"])
                 if latest is None or latest["value"].get(entry["field"]) is None:
                     continue
@@ -383,6 +396,23 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             return _attach_rag(
                 widget_instance["type"], entry, _empty_bar(widget_instance["type"])
             )
+
+        if widget_instance["type"] == "4tlog.silent_devices":
+            devices_logging = latest["value"].get("devices_logging")
+            devices_silent = latest["value"].get("devices_silent")
+            if devices_logging is None and devices_silent is None:
+                return _attach_rag(
+                    widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+                )
+            devices_logging = devices_logging or 0
+            devices_silent = devices_silent or 0
+            result = {
+                "chart": "bar",
+                "data": {"Logging": devices_logging, "Silent": devices_silent},
+                "collected_at": latest["collected_at"],
+            }
+            result["rag"] = "red" if devices_silent > 0 else "green"
+            return result
 
         if widget_instance["type"] == "4thealth.device_review_posture":
             device_review = latest["value"].get("device_review")

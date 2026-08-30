@@ -903,3 +903,44 @@ def test_get_widget_series_log_volume_trend_stale_from_log_stats_collected_at():
     result = get_widget_series(widget, "30d")
 
     assert result["stale"] is True
+
+
+def test_catalog_has_silent_devices_widget():
+    entry = WIDGET_CATALOG["4tlog.silent_devices"]
+    assert entry["source_system"] == "4tlog"
+    assert entry["chart_type"] == "bar"
+    assert entry["default_size"] == "1x1"
+
+
+def test_get_widget_series_silent_devices_computes_bar_and_red_rag():
+    write_snapshot(
+        "s1", "summary",
+        {"devices_logging": 38, "devices_silent": 2, "silent_device_threshold_minutes": 60},
+        "2026-08-29T09:00:00Z",
+    )
+    widget = {"type": "4tlog.silent_devices", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"Logging": 38, "Silent": 2}
+    assert result["rag"] == "red"
+    assert result["collected_at"] == "2026-08-29T09:00:00Z"
+
+
+def test_get_widget_series_silent_devices_green_when_none_silent():
+    write_snapshot(
+        "s1", "summary", {"devices_logging": 40, "devices_silent": 0}, "2026-08-29T09:00:00Z",
+    )
+    widget = {"type": "4tlog.silent_devices", "source_instance": "s1"}
+
+    assert get_widget_series(widget, "30d")["rag"] == "green"
+
+
+def test_get_widget_series_silent_devices_no_data_when_absent():
+    write_snapshot("s1", "summary", {"faz_targets_total": 3}, "2026-08-29T09:00:00Z")
+    widget = {"type": "4tlog.silent_devices", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert "rag" not in result

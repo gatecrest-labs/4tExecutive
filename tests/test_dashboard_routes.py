@@ -698,3 +698,23 @@ def test_dashboard_renders_as_of_in_utc_by_default(client, tmp_path, monkeypatch
 
     assert response.status_code == 200
     assert b"as of 2026-08-29 17:14:38 UTC" in response.data
+
+
+def test_dashboard_renders_silent_devices_widget(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4tlog.silent_devices", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"devices_logging": 38, "devices_silent": 2}, "2026-08-29T09:00:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Silent Devices" in response.data
+    assert b"rag-red" in response.data
