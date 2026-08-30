@@ -5,6 +5,8 @@ config/certs/
 certs/
 metrics.db
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 .venv/
