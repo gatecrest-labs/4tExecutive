@@ -2904,6 +2904,7 @@ a:hover { text-decoration: underline; }
 }
 
 .widget-1x1 { grid-column: span 1; grid-row: span 1; }
+.widget-1x2 { grid-column: span 1; grid-row: span 2; }
 .widget-2x1 { grid-column: span 2; grid-row: span 1; }
 .widget-2x2 { grid-column: span 2; grid-row: span 2; }
 
@@ -2948,22 +2949,8 @@ a:hover { text-decoration: underline; }
   .widget-2x1, .widget-2x2 { grid-column: span 2; }
 }
 
-.range-selector { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-
-.range-btn {
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  text-decoration: none;
-  font-size: 0.8rem;
-}
-
-.range-btn:hover { opacity: 0.85; }
-.range-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-
 .chart-svg { width: 100%; height: auto; display: block; }
+.chart-gauge-value { margin: 0.1rem 0 0; text-align: center; font-size: 1.4rem; font-weight: 700; color: var(--text); }
 .chart-range-label { margin: 0.2rem 0 0; font-size: 0.7rem; color: var(--text-muted); }
 .chart-bar-count, .chart-bar-label { font-size: 6px; fill: var(--text-muted); }
 .widget-extra { margin: 0.2rem 0 0; font-size: 0.72rem; color: var(--text-muted); }

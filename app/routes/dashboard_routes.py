@@ -75,7 +75,6 @@ def index():
             edit_mode=False,
             catalog=None,
             range_key=range_key,
-            ranges=list(RANGES),
             posture=posture,
         )
     )

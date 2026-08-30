@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 
 from app.metrics_db import get_history, get_latest
@@ -85,7 +86,9 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "hygiene_score",
-        "default_size": "1x1",
+        # Taller than 1x1 so the gauge (arc + needle + value) has room to
+        # render legibly instead of being squashed by the standard card height.
+        "default_size": "1x2",
         "rag": {"direction": "higher", "green": 90, "amber": 75},
     },
     "4thealth.version_compliance": {
@@ -93,7 +96,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "version_compliance_pct",
-        "default_size": "1x1",
+        "default_size": "1x2",
         "rag": {"direction": "higher", "green": 95, "amber": 85},
     },
     "4thealth.pending_config_diffs": {
@@ -336,6 +339,16 @@ def _attach_rag(widget_type: str, entry: dict, result: dict, *, line_rag_value=N
     return result
 
 
+# Widget types whose value is meaningless (reads as 0/null) until the
+# named sweep job has completed at least once — see docs/integrations.md's
+# "absent/null until the first scheduled ... rollup run" note. Rather than
+# rendering a misleading red 0, get_widget_value reports these as pending.
+_PENDING_SWEEP_STATUS_KEY: dict[str, str] = {
+    "4thealth.hygiene_score": "hygiene_sweep_status",
+    "4thealth.version_compliance": "device_sweep_status",
+}
+
+
 def get_widget_value(widget_instance: dict) -> dict | None:
     entry = WIDGET_CATALOG[widget_instance["type"]]
     latest = get_latest(widget_instance["source_instance"], entry["metric_type"])
@@ -348,7 +361,39 @@ def get_widget_value(widget_instance: dict) -> dict | None:
     stale = _is_stale(latest["value"], widget_instance["type"])
     if stale is not None:
         result["stale"] = stale
+    status_key = _PENDING_SWEEP_STATUS_KEY.get(widget_instance["type"])
+    if status_key and not result["value"] and latest["value"].get(status_key) != "completed":
+        result["pending"] = True
+        return result
     return _attach_rag(widget_instance["type"], entry, result)
+
+
+def _gauge_point(cx: float, cy: float, r: float, value: float, max_value: float) -> tuple[float, float]:
+    """Point on the gauge's semicircle rim for value, sweeping left (0) to right (max_value) over the top."""
+    angle = math.radians(180 - (value / max_value) * 180)
+    return cx + r * math.cos(angle), cy - r * math.sin(angle)
+
+
+def gauge_geometry(value: float | None, green: float, amber: float, max_value: float = 100) -> dict:
+    """Compute SVG geometry for a red/amber/green semicircle gas gauge.
+
+    Bands are drawn low-to-high as red [0, amber), amber [amber, green),
+    green [green, max_value], matching the "higher is better" RAG direction
+    used by hygiene_score and version_compliance_pct.
+    """
+    cx, cy, r = 100.0, 95.0, 80.0
+    band_bounds = [0, amber, green, max_value]
+    colors = ["var(--status-failed)", "var(--status-amber)", "var(--status-ok)"]
+    bands = []
+    for start_v, end_v, color in zip(band_bounds, band_bounds[1:], colors):
+        if end_v <= start_v:
+            continue
+        x1, y1 = _gauge_point(cx, cy, r, start_v, max_value)
+        x2, y2 = _gauge_point(cx, cy, r, end_v, max_value)
+        bands.append({"path": f"M {x1:.2f} {y1:.2f} A {r:.0f} {r:.0f} 0 0 1 {x2:.2f} {y2:.2f}", "color": color})
+    clamped = max(0.0, min(max_value, value)) if value is not None else 0.0
+    needle_x, needle_y = _gauge_point(cx, cy, 65.0, clamped, max_value)
+    return {"cx": cx, "cy": cy, "needle_x": round(needle_x, 2), "needle_y": round(needle_y, 2), "bands": bands}
 
 
 RANGES: dict[str, timedelta] = {
