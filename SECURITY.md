@@ -64,6 +64,23 @@ filesystem access, no SSH, and no elevated privileges.
   rate limit is per source IP only, so a distributed attempt across many
   IPs isn't slowed down by it.
 
+## Public repository checklist
+
+Before switching this repo from private to public, run this quick checklist:
+
+- Rotate `SECRET_KEY` and any source bearer tokens that may have ever lived
+  in local `.env` or `config/*.json` files.
+- Regenerate any local TLS cert/key material under `certs/` if it was shared
+  outside your machine.
+- Confirm ignore coverage and index state:
+  - `git check-ignore -v .env .env.local certs/key.pem config/users.json`
+  - `git ls-files | egrep '^(\.env|certs/|config/[^/]+\.json|metrics\.db)$'`
+- Scan current content and history for accidental leaks before publishing.
+- Keep demo credentials out of reachable environments (rotate or delete demo
+  users after demos).
+- Enable GitHub security features available on your plan (Dependabot alerts,
+  secret scanning if available, private vulnerability reporting).
+
 ## Supported versions
 
 This project does not yet have tagged releases or a versioning policy;
