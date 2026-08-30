@@ -11,25 +11,37 @@ from app.decorators import tab_required
 from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.local_time import DEFAULT_TIMEZONE, is_valid_timezone
 from app.sources import add_source, delete_source, list_sources
-from app.widgets import DEFAULT_RANGE, WIDGET_CATALOG, annotate
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
-_HOST_WIDGET_TYPES = ["4texecutive.cpu_percent", "4texecutive.memory_percent", "4texecutive.disk_percent"]
 
+def _render_admin(active_panel, sources_error=None, users_error=None, settings_error=None):
+    from app.atomic_io import read_json
+    from app.auth import USERS_PATH
 
-def _render_sources(error: str | None = None):
     sources = list_sources()
     statuses = {source["id"]: poll_status(source["id"]) for source in sources}
+    usernames = [u["username"] for u in read_json(USERS_PATH, default={"users": []})["users"]]
+    users = [{"username": name, "groups": get_user_groups(name)} for name in usernames]
+
     return render_template(
-        "admin/sources.html", sources=sources, statuses=statuses, error=error
+        "admin/index.html",
+        active_panel=active_panel,
+        sources=sources,
+        statuses=statuses,
+        sources_error=sources_error,
+        users=users,
+        all_groups=list_group_names(),
+        users_error=users_error,
+        timezone=get_setting("timezone", DEFAULT_TIMEZONE),
+        settings_error=settings_error,
     )
 
 
 @bp.route("/sources", methods=["GET"])
 @tab_required("admin")
 def sources():
-    return _render_sources()
+    return _render_admin("sources")
 
 
 @bp.route("/sources", methods=["POST"])
@@ -37,14 +49,15 @@ def sources():
 def add_source_route():
     base_url = request.form["base_url"]
     if not base_url.startswith("https://"):
-        return _render_sources(
-            error="Base URL must start with https:// (bearer token would otherwise be sent in cleartext)."
+        return _render_admin(
+            "sources",
+            sources_error="Base URL must start with https:// (bearer token would otherwise be sent in cleartext).",
         )
 
     try:
         poll_interval_minutes = int(request.form.get("poll_interval_minutes", 15))
     except ValueError:
-        return _render_sources(error="Poll interval (minutes) must be a whole number.")
+        return _render_admin("sources", sources_error="Poll interval (minutes) must be a whole number.")
 
     try:
         add_source(
@@ -57,7 +70,7 @@ def add_source_route():
             verify_tls=request.form.get("skip_tls_verify") != "on",
         )
     except ValueError as exc:
-        return _render_sources(error=str(exc))
+        return _render_admin("sources", sources_error=str(exc))
 
     return redirect(url_for("admin.sources"))
 
@@ -76,24 +89,10 @@ def refresh_source_route(source_id):
     return redirect(url_for("admin.sources"))
 
 
-def _render_users(error: str | None = None):
-    from app.atomic_io import read_json
-    from app.auth import USERS_PATH
-
-    usernames = [u["username"] for u in read_json(USERS_PATH, default={"users": []})["users"]]
-    users = [{"username": name, "groups": get_user_groups(name)} for name in usernames]
-    return render_template(
-        "admin/users.html",
-        users=users,
-        all_groups=list_group_names(),
-        error=error,
-    )
-
-
 @bp.route("/users", methods=["GET"])
 @tab_required("admin")
 def users():
-    return _render_users()
+    return _render_admin("users")
 
 
 @bp.route("/users", methods=["POST"])
@@ -104,14 +103,14 @@ def add_user_route():
     groups = request.form.getlist("groups")
 
     if not username:
-        return _render_users(error="Username is required.")
+        return _render_admin("users", users_error="Username is required.")
     if get_user(username) is not None:
-        return _render_users(error=f"user already exists: {username}")
+        return _render_admin("users", users_error=f"user already exists: {username}")
 
     try:
         create_user(username, password)
     except ValueError as exc:
-        return _render_users(error=str(exc))
+        return _render_admin("users", users_error=str(exc))
 
     set_user_groups(username, groups)
     return redirect(url_for("admin.users"))
@@ -127,18 +126,10 @@ def delete_user_route(username):
     return redirect(url_for("admin.users"))
 
 
-def _render_settings(error: str | None = None):
-    return render_template(
-        "admin/settings.html",
-        timezone=get_setting("timezone", DEFAULT_TIMEZONE),
-        error=error,
-    )
-
-
 @bp.route("/settings", methods=["GET"])
 @tab_required("admin")
 def settings():
-    return _render_settings()
+    return _render_admin("settings")
 
 
 @bp.route("/settings", methods=["POST"])
@@ -146,7 +137,10 @@ def settings():
 def update_settings_route():
     tz = request.form.get("timezone", "").strip()
     if not is_valid_timezone(tz):
-        return _render_settings(error=f'"{tz}" is not a recognized IANA timezone name (e.g. "America/Chicago", "UTC").')
+        return _render_admin(
+            "settings",
+            settings_error=f'"{tz}" is not a recognized IANA timezone name (e.g. "America/Chicago", "UTC").',
+        )
     set_setting("timezone", tz)
     return redirect(url_for("admin.settings"))
 
@@ -154,12 +148,4 @@ def update_settings_route():
 @bp.route("/system", methods=["GET"])
 @tab_required("admin")
 def system():
-    widgets = [
-        annotate(
-            {"type": t, "source_instance": "_self", "size": WIDGET_CATALOG[t]["default_size"]},
-            with_data=True,
-            range_key=DEFAULT_RANGE,
-        )
-        for t in _HOST_WIDGET_TYPES
-    ]
-    return render_template("admin/system.html", widgets=widgets)
+    return _render_admin("system")
