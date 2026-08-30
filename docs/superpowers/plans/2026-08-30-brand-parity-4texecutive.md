@@ -308,10 +308,7 @@ Replace the full contents of `app/templates/base.html` with:
 </html>
 ```
 
-Note: `user_has_tab` must be available in the template. Check `app/__init__.py` for a Jinja global/context processor registration — grep confirmed it's imported in `app/__init__.py` (`from app.groups import user_has_tab`); verify it's registered as a Jinja global:
-
-Run: `grep -n "user_has_tab" app/__init__.py`
-Expected: a line registering it as a template global, e.g. `flask_app.jinja_env.globals["user_has_tab"] = user_has_tab` or similar. If it is NOT registered as a global (only imported for use elsewhere), add this line in `create_app()` right after the existing `from app.groups import user_has_tab` import is used, so the template call above works: `flask_app.jinja_env.globals["user_has_tab"] = user_has_tab`.
+Note: `user_has_tab` is already registered as a Jinja global in `app/__init__.py` (`flask_app.jinja_env.globals["user_has_tab"] = user_has_tab`) — no change needed there; the template call above already works with it.
 
 - [ ] **Step 3: Run the full test suite**
 
@@ -321,7 +318,7 @@ Expected: failures only in `tests/test_auth_routes.py::test_login_page_uses_auth
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/templates/base.html app/__init__.py
+git add app/templates/base.html
 git commit -m "Rebuild topbar chrome with new 4tExecutive brand mark, matching 4thealth-plus layout"
 ```
 
@@ -422,19 +419,42 @@ Replace the full contents of `app/templates/login.html` with:
 
 - [ ] **Step 4: Switch the login failure path to flash()**
 
-In `app/routes/auth_routes.py`, view the current login view (lines ~10-24):
+The current full contents of `app/routes/auth_routes.py` are:
 
 ```python
+"""Login and logout routes."""
+
+from __future__ import annotations
+
+from flask import Blueprint, redirect, render_template, request, session, url_for
+
+from app import limiter
+from app.auth import verify_password
+
+bp = Blueprint("auth", __name__)
+
+
 @bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     error = None
     if request.method == "POST":
-        ...
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        if verify_password(username, password):
+            session["username"] = username
+            return redirect(url_for("dashboard.index"))
         error = "Invalid username or password."
     return render_template("login.html", error=error)
+
+
+@bp.route("/logout")
+def logout():
+    session.pop("username", None)
+    return redirect(url_for("auth.login"))
 ```
 
-Replace with (add `flash` to the existing `flask` import):
+Replace only the `flask` import line and the `login()` function body, keeping everything else (the `limiter` import, the `@limiter.limit("10 per minute")` decorator, `logout()`) exactly as-is:
 
 ```python
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -442,20 +462,17 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 ```python
 @bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
-        user = get_user(username)
-        if user is None or not verify_password(password, user["password_hash"]):
-            flash("Invalid username or password.", "danger")
-        else:
+        if verify_password(username, password):
             session["username"] = username
             return redirect(url_for("dashboard.index"))
+        flash("Invalid username or password.", "danger")
     return render_template("login.html")
 ```
-
-(Keep whatever the existing password-verification call is named — read the current file before editing to preserve the exact function/import names already in use; only the `error` variable is being replaced by `flash()`.)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
