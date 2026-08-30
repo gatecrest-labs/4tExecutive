@@ -27,6 +27,8 @@ The design spec (section 5) said the login page's theme toggle would need 4theal
 
 The design spec's host-metrics range buttons implicitly assumed 4thealth-plus's range set (`1h/4h/12h/1d/7d/14d`). 4tExecutive's `RANGES` dict (`app/widgets.py:354`) has no `1h` key and includes `30d`. This plan uses 4tExecutive's actual range keys (`4h/12h/1d/7d/14d/30d`) for the host-metrics range row, matching the dashboard's own range selector. See Task 5.
 
+The design spec (section 3) implied every per-template `error` variable would be replaced by `flash()`, matching the login page's treatment. Task 4's admin merge kept panel-scoped `sources_error`/`users_error`/`settings_error` template variables instead, because the merged admin page has four tabs and a single top-of-page flash region can't express which panel an error belongs to — and the POST-error paths re-render in place rather than redirecting, which is exactly where session-based flash is weakest. This was confirmed correct by the final whole-branch review; recorded here so a future pass doesn't "fix" it back to a shared flash.
+
 ---
 
 ## File Structure

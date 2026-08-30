@@ -23,7 +23,7 @@ def login():
     return render_template("login.html")
 
 
-@bp.route("/logout", methods=["GET", "POST"])
+@bp.route("/logout", methods=["POST"])
 def logout():
     session.pop("username", None)
     return redirect(url_for("auth.login"))

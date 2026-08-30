@@ -1,5 +1,5 @@
 <!doctype html>
-<html data-theme="{{ request.cookies.get('theme', 'light') }}">
+<html lang="en" data-theme="{{ request.cookies.get('theme', 'light') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +9,7 @@
 </head>
 <body class="login-page">
 <div class="login-card">
-  <h1 class="login-title">4tExecutive</h1>
+  <h1 class="login-title">&#128274; 4tExecutive</h1>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
