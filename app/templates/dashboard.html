@@ -13,13 +13,6 @@
   {% endif %}
 </div>
 {% endif %}
-{% if not edit_mode %}
-<div class="range-selector">
-  {% for r in ranges %}
-    <a href="{{ url_for('dashboard.index') }}?range={{ r }}" class="range-btn{% if r == range_key %} active{% endif %}">{{ r }}</a>
-  {% endfor %}
-</div>
-{% endif %}
 {% if edit_mode %}
   <p>Edit mode — available widgets:</p>
   <ul>
@@ -75,8 +68,12 @@
         {% else %}
           <p class="widget-empty">No data yet</p>
         {% endif %}
+      {% elif widget.data and widget.data.pending %}
+        <p class="widget-empty">Pending first sweep</p>
       {% elif widget.data and widget.data.value is not none %}
-        {% if widget.data.value is mapping %}
+        {% if widget.type in ('4thealth.hygiene_score', '4thealth.version_compliance') %}
+          {{ charts.gauge_chart(widget.data.value, WIDGET_CATALOG[widget.type].rag.green, WIDGET_CATALOG[widget.type].rag.amber) }}
+        {% elif widget.data.value is mapping %}
           <table class="widget-table">
             {% for version, count in widget.data.value.items() %}
             <tr><td>{{ version }}</td><td>{{ count }}</td></tr>

@@ -24,3 +24,15 @@
   {% endfor %}
 </svg>
 {% endmacro %}
+
+{% macro gauge_chart(value, green, amber, max_value=100) %}
+{% set geo = gauge_geometry(value, green, amber, max_value) %}
+<svg class="chart-svg chart-gauge" viewBox="0 0 200 110">
+  {% for band in geo.bands %}
+  <path d="{{ band.path }}" stroke="{{ band.color }}" stroke-width="18" fill="none" stroke-linecap="round" />
+  {% endfor %}
+  <line x1="{{ geo.cx }}" y1="{{ geo.cy }}" x2="{{ geo.needle_x }}" y2="{{ geo.needle_y }}" stroke="var(--text)" stroke-width="3" stroke-linecap="round" />
+  <circle cx="{{ geo.cx }}" cy="{{ geo.cy }}" r="6" fill="var(--text)" />
+</svg>
+<p class="chart-gauge-value">{{ value }}</p>
+{% endmacro %}

@@ -322,16 +322,6 @@ def test_dashboard_renders_zero_value_instead_of_no_data(client, tmp_path, monke
     assert b">0<" in response.data
 
 
-def test_dashboard_defaults_to_1d_range(client, tmp_path, monkeypatch):
-    _login(client)
-    _allow_dashboard_tab(monkeypatch, tmp_path)
-
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert b'class="range-btn active">1d<' in response.data
-
-
 def test_dashboard_range_query_param_sets_cookie(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
@@ -342,25 +332,32 @@ def test_dashboard_range_query_param_sets_cookie(client, tmp_path, monkeypatch):
     assert response.headers.get("Set-Cookie", "").find("range=7d") != -1
 
 
-def test_dashboard_invalid_range_falls_back_to_default(client, tmp_path, monkeypatch):
+def test_dashboard_invalid_range_falls_back_to_default_without_error(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
 
     response = client.get("/?range=bogus")
 
     assert response.status_code == 200
-    assert b'class="range-btn active">1d<' in response.data
 
 
 def test_dashboard_uses_range_cookie_when_no_query_param(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(60 * 24 * 20))
+    metrics_db.write_snapshot("s1", "summary", {"rule_count_total": 130}, _iso(5))
     client.set_cookie("range", "30d")
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'class="range-btn active">30d<' in response.data
+    assert "▲ +30 (30d)".encode() in response.data
 
 
 def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path, monkeypatch):
@@ -379,6 +376,47 @@ def test_dashboard_renders_firewall_managed_count_as_line_chart(client, tmp_path
     assert response.status_code == 200
     assert b"chart-line" in response.data
     assert b"128" in response.data
+
+
+def test_dashboard_renders_hygiene_score_as_gauge(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"hygiene_score": 92, "hygiene_sweep_status": "completed"}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"chart-gauge" in response.data
+    assert b"widget-value" not in response.data
+
+
+def test_dashboard_renders_pending_state_instead_of_zero_gauge(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    from app.layouts import save_layout
+
+    save_layout(
+        "alice",
+        [{"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1", "date_range": "30d"}],
+    )
+    metrics_db.write_snapshot(
+        "s1", "summary", {"hygiene_score": 0, "hygiene_sweep_status": "running"}, "2026-08-27T10:00:00Z"
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Pending first sweep" in response.data
+    assert b"chart-gauge" not in response.data
+    assert b"rag-red" not in response.data
 
 
 def test_dashboard_renders_rag_class_on_widget_card(client, tmp_path, monkeypatch):

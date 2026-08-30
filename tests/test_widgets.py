@@ -11,6 +11,7 @@ from app.widgets import (
     WIDGET_CATALOG,
     _downsample,
     default_layout,
+    gauge_geometry,
     get_widget_series,
     get_widget_value,
 )
@@ -68,14 +69,29 @@ def test_get_widget_value_no_rag_key_for_informational_widget():
     assert "rag" not in result
 
 
-def test_get_widget_value_rag_none_when_value_missing():
-    write_snapshot("s1", "summary", {"some_other_field": 1}, "2026-08-27T10:00:00Z")
+def test_get_widget_value_rag_none_when_value_missing_but_sweep_completed():
+    write_snapshot(
+        "s1",
+        "summary",
+        {"some_other_field": 1, "hygiene_sweep_status": "completed"},
+        "2026-08-27T10:00:00Z",
+    )
     widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
 
     result = get_widget_value(widget)
 
     assert result["value"] is None
     assert result["rag"] is None
+
+
+def test_get_widget_value_hygiene_score_missing_entirely_is_pending():
+    write_snapshot("s1", "summary", {"some_other_field": 1}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["value"] is None
+    assert result["pending"] is True
 
 
 def test_get_widget_value_rag_lower_direction_for_pending_config_diffs():
@@ -112,6 +128,101 @@ def test_get_widget_value_raises_for_unknown_widget_type():
     widget = {"type": "not.a.real.widget", "source_instance": "x"}
     with pytest.raises(KeyError):
         get_widget_value(widget)
+
+
+def test_get_widget_value_hygiene_score_zero_before_sweep_completes_is_pending():
+    write_snapshot(
+        "s1",
+        "summary",
+        {"hygiene_score": 0, "hygiene_sweep_status": "running"},
+        "2026-08-27T10:00:00Z",
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["pending"] is True
+    assert "rag" not in result
+
+
+def test_get_widget_value_hygiene_score_missing_sweep_status_is_pending():
+    write_snapshot("s1", "summary", {"hygiene_score": 0}, "2026-08-27T10:00:00Z")
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["pending"] is True
+
+
+def test_get_widget_value_hygiene_score_zero_after_sweep_completes_is_real_red():
+    write_snapshot(
+        "s1",
+        "summary",
+        {"hygiene_score": 0, "hygiene_sweep_status": "completed"},
+        "2026-08-27T10:00:00Z",
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert "pending" not in result
+    assert result["rag"] == "red"
+
+
+def test_get_widget_value_hygiene_score_nonzero_before_sweep_completes_is_not_pending():
+    write_snapshot(
+        "s1",
+        "summary",
+        {"hygiene_score": 92, "hygiene_sweep_status": "running"},
+        "2026-08-27T10:00:00Z",
+    )
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert "pending" not in result
+    assert result["rag"] == "green"
+
+
+def test_get_widget_value_version_compliance_zero_before_device_sweep_completes_is_pending():
+    write_snapshot(
+        "s1",
+        "summary",
+        {"version_compliance_pct": 0, "device_sweep_status": "running"},
+        "2026-08-27T10:00:00Z",
+    )
+    widget = {"type": "4thealth.version_compliance", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["pending"] is True
+
+
+def test_gauge_geometry_bands_ordered_red_amber_green():
+    geo = gauge_geometry(value=92, green=90, amber=75)
+
+    colors = [band["color"] for band in geo["bands"]]
+    assert colors == ["var(--status-failed)", "var(--status-amber)", "var(--status-ok)"]
+
+
+def test_gauge_geometry_needle_at_zero_points_left():
+    geo = gauge_geometry(value=0, green=90, amber=75)
+
+    assert geo["needle_x"] == pytest.approx(geo["cx"] - 65, abs=0.01)
+    assert geo["needle_y"] == pytest.approx(geo["cy"], abs=0.01)
+
+
+def test_gauge_geometry_needle_at_max_points_right():
+    geo = gauge_geometry(value=100, green=90, amber=75)
+
+    assert geo["needle_x"] == pytest.approx(geo["cx"] + 65, abs=0.01)
+    assert geo["needle_y"] == pytest.approx(geo["cy"], abs=0.01)
+
+
+def test_gauge_geometry_clamps_out_of_range_value():
+    geo = gauge_geometry(value=150, green=90, amber=75)
+
+    assert geo["needle_x"] == pytest.approx(geo["cx"] + 65, abs=0.01)
 
 
 def test_default_layout_empty_when_no_sources():

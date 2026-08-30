@@ -102,6 +102,11 @@ def create_app(
 
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
+    from app.widgets import WIDGET_CATALOG, gauge_geometry
+
+    flask_app.jinja_env.globals["gauge_geometry"] = gauge_geometry
+    flask_app.jinja_env.globals["WIDGET_CATALOG"] = WIDGET_CATALOG
+
     from app.app_settings import get_setting
     from app.local_time import DEFAULT_TIMEZONE, format_local
 
