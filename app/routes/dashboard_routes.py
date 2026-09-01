@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, make_response, render_template, request, s
 from app.decorators import tab_required
 from app.layouts import get_layout, save_layout
 from app.sources import get_source
-from app.widgets import DEFAULT_RANGE, RANGES, WIDGET_CATALOG, annotate, default_layout
+from app.widgets import DEFAULT_RANGE, RANGES, WIDGET_CATALOG, annotate, default_layout, group_by_system
 
 bp = Blueprint("dashboard", __name__)
 
@@ -67,11 +67,16 @@ def index():
     range_key = _resolve_range()
     layout = get_layout(session["username"]) or default_layout()
     widgets = [annotate(widget, with_data=True, range_key=range_key) for widget in layout]
+    # Stamp each widget's original position before grouping into sections, so
+    # the posture strip's "jump to offender" link (#widget-N) still resolves
+    # once widgets are nested inside per-system section grids.
+    for i, widget in enumerate(widgets, start=1):
+        widget["index"] = i
     posture = _posture(widgets)
     response = make_response(
         render_template(
             "dashboard.html",
-            widgets=widgets,
+            sections=group_by_system(widgets),
             edit_mode=False,
             catalog=None,
             range_key=range_key,
@@ -88,8 +93,10 @@ def index():
 def edit():
     layout = get_layout(session["username"]) or default_layout()
     widgets = [annotate(widget, with_data=False) for widget in layout]
+    for i, widget in enumerate(widgets, start=1):
+        widget["index"] = i
     return render_template(
-        "dashboard.html", widgets=widgets, edit_mode=True, catalog=WIDGET_CATALOG
+        "dashboard.html", sections=group_by_system(widgets), edit_mode=True, catalog=WIDGET_CATALOG
     )
 
 

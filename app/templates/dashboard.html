@@ -21,17 +21,20 @@
     {% endfor %}
   </ul>
 {% endif %}
-<div class="widget-grid">
-  {% for widget in widgets %}
-    <div id="widget-{{ loop.index }}" class="widget widget-{{ widget.size|default('1x1') }}{% if widget.data and widget.data.rag %} rag-{{ widget.data.rag }}{% endif %}{% if widget.data and widget.data.stale %} widget-stale{% endif %}">
-      <h3>{{ widget.label }}</h3>
+{% for section in sections %}
+<div class="dashboard-section">
+  <h2 class="dashboard-section-title">{{ section.title }}</h2>
+  <div class="widget-grid">
+  {% for widget in section.widgets %}
+    <div id="widget-{{ widget.index }}" class="widget widget-{{ widget.size|default('1x1') }}{% if widget.data and widget.data.rag %} rag-{{ widget.data.rag }}{% endif %}{% if widget.data and widget.data.stale %} widget-stale{% endif %}">
+      <h3>{{ widget.label }}<span class="info-icon" title="{{ widget.description }}{% if widget.current_summary %} — {{ widget.current_summary }}{% endif %}">?</span></h3>
       <p class="widget-source">{{ widget.source_name }}</p>
       {% if widget.data and widget.data.chart == 'line' %}
         {% if widget.data.points %}
           {{ charts.line_chart(widget.data.points, widget.data.min, widget.data.max) }}
           {% if widget.data.extra_label %}<p class="widget-extra">{{ widget.data.extra_label }}</p>{% endif %}
           {% if widget.data.delta is not none %}
-            <p class="widget-delta">{% if widget.data.delta > 0 %}▲ +{{ widget.data.delta }} ({{ range_key }}){% elif widget.data.delta < 0 %}▼ {{ widget.data.delta }} ({{ range_key }}){% else %}— no change ({{ range_key }}){% endif %}</p>
+            <p class="widget-delta">{% if widget.data.delta > 0 %}▲ +{{ widget.data.delta }} ({{ widget.data.range_label }}){% elif widget.data.delta < 0 %}▼ {{ widget.data.delta }} ({{ widget.data.range_label }}){% else %}— no change ({{ widget.data.range_label }}){% endif %}</p>
           {% endif %}
           {% if widget.data.breakdown %}
           <ul class="widget-breakdown">
@@ -53,7 +56,7 @@
         {% endif %}
       {% elif widget.data and widget.data.chart == 'bar' %}
         {% if widget.data.data %}
-          {{ charts.bar_chart(widget.data.data, widget.data.eol_versions|default([])) }}
+          {{ charts.bar_chart(widget.data.data, widget.data.eol_versions|default([]), rotate_labels=(widget.type == '4thealth.rule_hygiene')) }}
           {% if widget.data.top_failing_checks %}
           <ul class="widget-breakdown">
             {% for item in widget.data.top_failing_checks %}
@@ -88,5 +91,7 @@
       {% endif %}
     </div>
   {% endfor %}
+  </div>
 </div>
+{% endfor %}
 {% endblock %}

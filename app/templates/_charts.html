@@ -11,16 +11,28 @@
 <p class="chart-range-label"><span>{{ min_v }}</span> – <span>{{ max_v }}</span></p>
 {% endmacro %}
 
-{% macro bar_chart(data, highlight=[]) %}
+{% macro bar_chart(data, highlight=[], rotate_labels=False) %}
 {% set count = data | length %}
 {% set max_v = data.values() | max %}
-<svg class="chart-svg chart-bar" viewBox="0 0 240 80" preserveAspectRatio="none">
+{% set vb_h = 130 if rotate_labels else 80 %}
+<svg class="chart-svg chart-bar" viewBox="0 0 240 {{ vb_h }}" preserveAspectRatio="none">
   {% for version, value in data.items() %}
   {% set bar_w = 240 / count %}
   {% set bar_h = (value / max_v) * 55 if max_v else 0 %}
+  {% set bar_cx = loop.index0 * bar_w + bar_w / 2 %}
   <rect x="{{ '%.2f' | format(loop.index0 * bar_w + 4) }}" y="{{ '%.2f' | format(70 - bar_h) }}" width="{{ '%.2f' | format(bar_w - 8) }}" height="{{ '%.2f' | format(bar_h) }}" fill="{{ 'var(--status-failed)' if version in highlight else 'var(--accent)' }}" />
-  <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="{{ '%.2f' | format(70 - bar_h - 3) }}" text-anchor="middle" class="chart-bar-count">{{ value }}</text>
-  <text x="{{ '%.2f' | format(loop.index0 * bar_w + bar_w / 2) }}" y="78" text-anchor="middle" class="chart-bar-label">{{ version }}</text>
+  <text x="{{ '%.2f' | format(bar_cx) }}" y="{{ '%.2f' | format(70 - bar_h - 3) }}" text-anchor="middle" class="chart-bar-count">{{ value }}</text>
+  {% if rotate_labels %}
+  {# Long/many category labels (e.g. Rule Hygiene's 9 finding types) don't
+     fit horizontally centered under a narrow bar slot without overlapping
+     their neighbors. A diagonal angle still overlaps for the longest ones,
+     so go fully vertical instead — that pins each label's horizontal
+     footprint to its own font-height, guaranteeing no overlap regardless of
+     label length, at the cost of needing to tilt your head to read it. #}
+  <text x="{{ '%.2f' | format(bar_cx) }}" y="74" text-anchor="end" transform="rotate(-90 {{ '%.2f' | format(bar_cx) }} 74)" class="chart-bar-label">{{ version }}</text>
+  {% else %}
+  <text x="{{ '%.2f' | format(bar_cx) }}" y="78" text-anchor="middle" class="chart-bar-label">{{ version }}</text>
+  {% endif %}
   {% endfor %}
 </svg>
 {% endmacro %}
