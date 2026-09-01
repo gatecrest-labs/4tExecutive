@@ -83,6 +83,7 @@ def _is_stale(value: dict, widget_type: str) -> bool | None:
 WIDGET_CATALOG: dict[str, dict] = {
     "4thealth.hygiene_score": {
         "label": "Hygiene Score",
+        "description": "Overall configuration hygiene score across the managed fleet, from the latest hygiene sweep.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "hygiene_score",
@@ -93,6 +94,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.version_compliance": {
         "label": "Device Version Compliance %",
+        "description": "Percentage of managed firewalls running an approved, non-EOL FortiOS version.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "version_compliance_pct",
@@ -101,6 +103,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.pending_config_diffs": {
         "label": "Pending Config Diffs",
+        "description": "Number of devices with configuration changes detected but not yet reviewed.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "pending_config_diff_count",
@@ -109,6 +112,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.last_backup_status": {
         "label": "App Config Backup",
+        "description": "Result of the most recent 4thealth-plus application configuration backup.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "last_backup_status",
@@ -117,6 +121,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.firewall_online_count": {
         "label": "Firewalls Online",
+        "description": "Count of managed firewalls currently reachable and reporting in.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_online_count",
@@ -125,14 +130,20 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.firewall_managed_count": {
         "label": "Total Managed Firewalls",
+        "description": "Total number of firewalls under management, tracked over the last 30 days.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_managed_count",
-        "default_size": "1x1",
+        # Taller than 1x1 — a 30-day line chart plus its range/delta/updated
+        # labels doesn't fit in a standard 120px-tall card without the SVG
+        # collapsing to 0 height.
+        "default_size": "1x2",
         "chart_type": "line",
+        "fixed_range": "30d",
     },
     "4thealth.fleet_availability": {
         "label": "Fleet Availability",
+        "description": "Share of managed firewalls online, as a percentage of the total fleet.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_online_count",
@@ -142,14 +153,18 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.rule_count_total": {
         "label": "Total Rules",
+        "description": "Total firewall policy rule count across the managed fleet, tracked over the last 30 days.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "rule_count_total",
-        "default_size": "1x1",
+        # Same reasoning as firewall_managed_count above.
+        "default_size": "1x2",
         "chart_type": "line",
+        "fixed_range": "30d",
     },
     "4thealth.adom_count": {
         "label": "ADOMs Configured",
+        "description": "Number of Administrative Domains configured on the managed FortiManager.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "adom_count",
@@ -157,6 +172,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.version_breakdown": {
         "label": "FortiOS Versions",
+        "description": "Distribution of FortiOS firmware versions across the managed fleet; EOL versions highlighted.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "version_breakdown",
@@ -165,6 +181,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.device_review_posture": {
         "label": "Configuration Posture",
+        "description": "Devices passing vs. failing configuration review checks, with the top failing checks listed.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "device_review",
@@ -174,6 +191,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
+        "description": "AI assistant connections and estimated cost over the trailing 24 hours.",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "ai_usage_24h",
@@ -182,14 +200,16 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4thealth.rule_hygiene": {
         "label": "Rule Hygiene",
+        "description": "Firewall rule hygiene findings from the latest sweep, grouped by finding type (shadowed, unhit, etc).",
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "rule_hygiene",
         "default_size": "2x2",
-        "chart_type": "line",
+        "chart_type": "bar",
     },
     "4texecutive.cpu_percent": {
         "label": "Host CPU",
+        "description": "CPU utilization of the 4tExecutive host container.",
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "cpu_percent",
@@ -198,6 +218,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4texecutive.memory_percent": {
         "label": "Host Memory",
+        "description": "Memory utilization of the 4tExecutive host container.",
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "memory_percent",
@@ -206,6 +227,7 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4texecutive.disk_percent": {
         "label": "Host Disk",
+        "description": "Disk utilization of the 4tExecutive host container.",
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "disk_percent",
@@ -214,13 +236,20 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4tlog.faz_health": {
         "label": "FortiAnalyzer Health",
+        "description": "Current health status of the connected FortiAnalyzer instance.",
         "source_system": "4tlog",
         "metric_type": "summary",
-        "field": "faz_health",
+        # 4tlog never emits a single "faz_health" field — it reports
+        # faz_targets_healthy/faz_targets_total/faz_disk_used_pct instead
+        # (see docs/integrations.md). get_widget_value special-cases this
+        # widget type to compose those three into one display value, so
+        # "field" here is unused but kept for catalog-entry consistency.
+        "field": "faz_targets_healthy",
         "default_size": "2x1",
     },
     "4tlog.log_volume_trend": {
         "label": "Log Volume Trend",
+        "description": "Log ingestion rate (events/sec) received by 4tlog over time.",
         "source_system": "4tlog",
         "metric_type": "summary",
         "field": "log_volume_events_per_sec",
@@ -229,14 +258,48 @@ WIDGET_CATALOG: dict[str, dict] = {
     },
     "4tlog.silent_devices": {
         "label": "Silent Devices",
+        "description": "Devices actively logging vs. gone silent (no logs received recently).",
         "source_system": "4tlog",
         "metric_type": "summary",
         "field": "devices_logging",
-        "default_size": "1x1",
+        "default_size": "2x2",
         "chart_type": "bar",
         "rag": {"direction": "higher", "green": 0, "amber": 0},
     },
 }
+
+# Section titles for grouping dashboard widgets by their source system, in
+# the order sections should render. Systems not listed here (there are none
+# today, but a future catalog entry could add one) render after these, in
+# first-seen order, titled by their raw system name.
+SECTION_TITLES: dict[str, str] = {
+    "4tlog": "4tlog",
+    "4thealth": "4thealth-plus",
+    "4texecutive": "4tExecutive",
+}
+
+
+def group_by_system(widgets: list[dict]) -> list[dict]:
+    """Bucket annotated widgets into titled sections by their catalog source_system.
+
+    Each widget dict is expected to carry an "index" key already (the
+    dashboard route stamps this before grouping) so per-widget DOM anchors
+    survive being nested inside per-section grids. Returns a list of
+    {"system", "title", "widgets"} dicts, ordered per SECTION_TITLES with any
+    unlisted systems appended afterward in first-seen order.
+    """
+    buckets: dict[str, list[dict]] = {}
+    for widget in widgets:
+        system = WIDGET_CATALOG[widget["type"]]["source_system"]
+        buckets.setdefault(system, []).append(widget)
+
+    sections = []
+    for system in SECTION_TITLES:
+        if system in buckets:
+            sections.append({"system": system, "title": SECTION_TITLES[system], "widgets": buckets.pop(system)})
+    for system, widgets_in_bucket in buckets.items():
+        sections.append({"system": system, "title": SECTION_TITLES.get(system, system), "widgets": widgets_in_bucket})
+    return sections
 
 
 def default_layout() -> list[dict]:
@@ -349,20 +412,43 @@ _PENDING_SWEEP_STATUS_KEY: dict[str, str] = {
 }
 
 
+def _faz_health_value(payload: dict) -> str | None:
+    """Compose FortiAnalyzer Health's display value from the three fields
+    4tlog actually sends (there is no single "faz_health" field — see the
+    comment on the 4tlog.faz_health catalog entry)."""
+    healthy = payload.get("faz_targets_healthy")
+    total = payload.get("faz_targets_total")
+    if healthy is None or total is None:
+        return None
+    value = f"{healthy}/{total} healthy"
+    disk_pct = payload.get("faz_disk_used_pct")
+    if disk_pct is not None:
+        value += f" · {disk_pct}% disk"
+    return value
+
+
 def get_widget_value(widget_instance: dict) -> dict | None:
     entry = WIDGET_CATALOG[widget_instance["type"]]
     latest = get_latest(widget_instance["source_instance"], entry["metric_type"])
     if latest is None:
         return None
+    if widget_instance["type"] == "4tlog.faz_health":
+        value = _faz_health_value(latest["value"])
+    else:
+        value = latest["value"].get(entry["field"])
     result = {
-        "value": latest["value"].get(entry["field"]),
+        "value": value,
         "collected_at": latest["collected_at"],
     }
     stale = _is_stale(latest["value"], widget_instance["type"])
     if stale is not None:
         result["stale"] = stale
+    # "ok" is the real completion value both sweeps report (see
+    # 4thealth-plus's executive_summary_cache.py) — {pending, running, ok,
+    # error}. "completed" never occurs; comparing against it here previously
+    # meant every finished sweep still read as pending.
     status_key = _PENDING_SWEEP_STATUS_KEY.get(widget_instance["type"])
-    if status_key and not result["value"] and latest["value"].get(status_key) != "completed":
+    if status_key and not result["value"] and latest["value"].get(status_key) != "ok":
         result["pending"] = True
         return result
     return _attach_rag(widget_instance["type"], entry, result)
@@ -486,6 +572,26 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             result["rag"] = "red" if critical > 0 else "green"
             return result
 
+        if widget_instance["type"] == "4thealth.rule_hygiene":
+            findings_by_type = (latest["value"].get("rule_hygiene") or {}).get("rule_findings_by_type") or {}
+            if not findings_by_type:
+                return _attach_rag(
+                    widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+                )
+            # snake_case check names (e.g. "missing_security_profile") read
+            # as run-on text under a narrow bar slot; humanizing them doesn't
+            # fully prevent the longest ones from needing the chart's
+            # rotate_labels angling, but it shortens and clarifies every one.
+            # missing_security_profile is 4thealth-plus's one check name long
+            # enough (see app/hygiene.py's CHECKS dict there) to still crowd
+            # its neighbor even rotated, so it gets an explicit short label.
+            label_overrides = {"missing_security_profile": "Missing Profile"}
+            data = {
+                label_overrides.get(k, k.replace("_", " ").title()): v
+                for k, v in findings_by_type.items()
+            }
+            return {"chart": "bar", "data": data, "collected_at": latest["collected_at"]}
+
         raw = latest["value"].get(entry["field"]) or {}
         if widget_instance["type"] == "4thealth.version_breakdown":
             data = {}
@@ -519,7 +625,11 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
             {"chart": "bar", "data": raw, "collected_at": latest["collected_at"]},
         )
 
-    range_delta = RANGES.get(range_key, RANGES[DEFAULT_RANGE])
+    # Some widgets (Total Rules, Total Managed Firewalls) always chart a
+    # fixed lookback regardless of the page-wide range, since a single-day
+    # window makes a slow-moving fleet-size metric look flat/meaningless.
+    effective_range_key = entry.get("fixed_range", range_key)
+    range_delta = RANGES.get(effective_range_key, RANGES[DEFAULT_RANGE])
     since = (datetime.now(UTC) - range_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
     history = get_history(source_id, entry["metric_type"], since)
     if not history:
@@ -533,6 +643,7 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
                 "max": None,
                 "extra_label": None,
                 "delta": None,
+                "range_label": effective_range_key,
                 "breakdown": None,
                 "by_feature": None,
                 "collected_at": None,
@@ -562,12 +673,6 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         latest_total = history[-1]["value"].get("firewall_managed_count")
         if isinstance(latest_online, (int, float)) and isinstance(latest_total, (int, float)) and latest_total:
             extra_label = f"{latest_online} / {latest_total} ({round(latest_online / latest_total * 100)}%)"
-    elif widget_instance["type"] == "4thealth.rule_hygiene":
-        points = [
-            (h["collected_at"], (h["value"].get("rule_hygiene") or {}).get("rule_findings_total"))
-            for h in history
-        ]
-        breakdown = (history[-1]["value"].get("rule_hygiene") or {}).get("rule_findings_by_type")
     else:
         points = [(h["collected_at"], h["value"].get(entry["field"])) for h in history]
 
@@ -587,6 +692,11 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
         "max": max(values) if values else None,
         "extra_label": extra_label,
         "delta": delta,
+        # The range the delta was actually computed over — normally the
+        # page-wide range_key, but a fixed_range widget (Total Rules, Total
+        # Managed Firewalls) always charts 30d regardless of the page range,
+        # so its delta label needs to say so rather than lying about it.
+        "range_label": effective_range_key,
         "breakdown": breakdown,
         "by_feature": by_feature,
         "collected_at": history[-1]["collected_at"],
@@ -601,13 +711,35 @@ def source_name(source_instance: str) -> str:
     return source["name"] if source else source_instance
 
 
+def _current_summary(data: dict | None) -> str | None:
+    """One-line "Current: ..." snippet summarizing a widget's latest data, for
+    the info-icon tooltip. Returns None when there's nothing to show (no data
+    yet, or a pending-first-sweep widget)."""
+    if not data or data.get("pending"):
+        return None
+    if data.get("chart") == "line":
+        points = data.get("points") or []
+        return f"Current: {points[-1][1]}" if points else None
+    if data.get("chart") == "bar":
+        bar_data = data.get("data") or {}
+        return "Current: " + ", ".join(f"{k} {v}" for k, v in bar_data.items()) if bar_data else None
+    value = data.get("value")
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return "Current: " + ", ".join(f"{k} {v}" for k, v in value.items())
+    return f"Current: {value}"
+
+
 def annotate(widget: dict, *, with_data: bool, range_key: str = DEFAULT_RANGE) -> dict:
     entry = WIDGET_CATALOG[widget["type"]]
     annotated = {
         **widget,
         "label": entry["label"],
+        "description": entry["description"],
         "source_name": source_name(widget["source_instance"]),
     }
     if with_data:
         annotated["data"] = get_widget_series(widget, range_key)
+        annotated["current_summary"] = _current_summary(annotated["data"])
     return annotated

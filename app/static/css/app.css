@@ -2875,12 +2875,50 @@ a:hover { text-decoration: underline; }
 
 /* ── 4tExecutive dashboard (no 4thealth-plus equivalent) ─────────────── */
 
+.dashboard-section {
+  background: var(--surface-alt);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-section-title {
+  font-size: .9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin: 0 0 .85rem;
+  padding-bottom: .5rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .widget-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: 120px;
   gap: 1rem;
 }
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: .35rem;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  font-size: .65rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+  cursor: help;
+}
+.info-icon:hover { border-color: var(--accent); color: var(--accent); }
 
 .widget {
   background: var(--surface);

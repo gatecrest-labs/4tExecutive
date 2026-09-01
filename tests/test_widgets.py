@@ -9,11 +9,14 @@ from app import metrics_db
 from app.metrics_db import init_db, write_snapshot
 from app.widgets import (
     WIDGET_CATALOG,
+    _current_summary,
     _downsample,
+    annotate,
     default_layout,
     gauge_geometry,
     get_widget_series,
     get_widget_value,
+    group_by_system,
 )
 
 
@@ -73,7 +76,7 @@ def test_get_widget_value_rag_none_when_value_missing_but_sweep_completed():
     write_snapshot(
         "s1",
         "summary",
-        {"some_other_field": 1, "hygiene_sweep_status": "completed"},
+        {"some_other_field": 1, "hygiene_sweep_status": "ok"},
         "2026-08-27T10:00:00Z",
     )
     widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
@@ -158,7 +161,7 @@ def test_get_widget_value_hygiene_score_zero_after_sweep_completes_is_real_red()
     write_snapshot(
         "s1",
         "summary",
-        {"hygiene_score": 0, "hygiene_sweep_status": "completed"},
+        {"hygiene_score": 0, "hygiene_sweep_status": "ok"},
         "2026-08-27T10:00:00Z",
     )
     widget = {"type": "4thealth.hygiene_score", "source_instance": "s1"}
@@ -537,6 +540,7 @@ def test_get_widget_series_line_no_history_returns_empty_chart():
         "max": None,
         "extra_label": None,
         "delta": None,
+        "range_label": "30d",
         "breakdown": None,
         "by_feature": None,
         "collected_at": None,
@@ -877,16 +881,11 @@ def test_get_widget_series_line_delta_none_with_no_history():
 def test_catalog_has_rule_hygiene_widget_with_no_rag():
     entry = WIDGET_CATALOG["4thealth.rule_hygiene"]
     assert entry["source_system"] == "4thealth"
-    assert entry["chart_type"] == "line"
+    assert entry["chart_type"] == "bar"
     assert "rag" not in entry
 
 
-def test_get_widget_series_rule_hygiene_line_points_and_breakdown():
-    write_snapshot(
-        "s1", "summary",
-        {"rule_hygiene": {"rule_findings_total": 100, "rule_findings_by_type": {"shadow": 4, "unhit": 60}}},
-        _iso(600),
-    )
+def test_get_widget_series_rule_hygiene_bar_charts_findings_by_type():
     write_snapshot(
         "s1", "summary",
         {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {"shadow": 5, "unhit": 65}}},
@@ -896,14 +895,33 @@ def test_get_widget_series_rule_hygiene_line_points_and_breakdown():
 
     result = get_widget_series(widget, "30d")
 
-    assert [v for _, v in result["points"]] == [100, 118]
-    assert result["breakdown"] == {"shadow": 5, "unhit": 65}
-    assert result["delta"] == 18
+    assert result["chart"] == "bar"
+    assert result["data"] == {"Shadow": 5, "Unhit": 65}
     assert "rag" not in result
 
 
-def test_get_widget_series_rule_hygiene_skips_snapshots_without_rollup():
-    write_snapshot("s1", "summary", {"hygiene_score": 90}, _iso(10))
+def test_get_widget_series_rule_hygiene_humanizes_snake_case_finding_names():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "rule_hygiene": {
+                "rule_findings_total": 130,
+                "rule_findings_by_type": {"missing_security_profile": 7, "unused_objects": 123},
+            }
+        },
+        _iso(5),
+    )
+    widget = {"type": "4thealth.rule_hygiene", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    # missing_security_profile gets an explicit short override (see
+    # widgets.py) rather than the generic title-case humanization, since even
+    # rotated it's long enough to crowd its neighbor in the bar chart.
+    assert result["data"] == {"Missing Profile": 7, "Unused Objects": 123}
+
+
+def test_get_widget_series_rule_hygiene_empty_when_no_findings_by_type():
     write_snapshot(
         "s1", "summary",
         {"rule_hygiene": {"rule_findings_total": 118, "rule_findings_by_type": {}}},
@@ -913,7 +931,7 @@ def test_get_widget_series_rule_hygiene_skips_snapshots_without_rollup():
 
     result = get_widget_series(widget, "30d")
 
-    assert len(result["points"]) == 1
+    assert result == {"chart": "bar", "data": {}, "collected_at": None}
 
 
 def test_get_widget_series_ai_usage_includes_by_feature_breakdown_when_present():
@@ -1020,7 +1038,9 @@ def test_catalog_has_silent_devices_widget():
     entry = WIDGET_CATALOG["4tlog.silent_devices"]
     assert entry["source_system"] == "4tlog"
     assert entry["chart_type"] == "bar"
-    assert entry["default_size"] == "1x1"
+    # Sized to match the other high-attention badges (AI Usage, Log Volume
+    # Trend, Rule Hygiene) rather than the standard 1x1 tile.
+    assert entry["default_size"] == "2x2"
 
 
 def test_get_widget_series_silent_devices_computes_bar_and_red_rag():
@@ -1074,3 +1094,166 @@ def test_get_widget_series_silent_devices_no_data_for_pre_tier3_snapshot():
 
     assert result["data"] == {}
     assert "rag" not in result
+
+
+# ── FortiAnalyzer Health: composed from the 3 fields 4tlog actually sends ──
+
+
+def test_get_widget_value_faz_health_composes_healthy_count_and_disk_pct():
+    write_snapshot(
+        "s1", "summary",
+        {"faz_targets_healthy": 3, "faz_targets_total": 3, "faz_disk_used_pct": 61.2},
+        _iso(5),
+    )
+    widget = {"type": "4tlog.faz_health", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["value"] == "3/3 healthy · 61.2% disk"
+
+
+def test_get_widget_value_faz_health_omits_disk_pct_when_absent():
+    write_snapshot(
+        "s1", "summary",
+        {"faz_targets_healthy": 1, "faz_targets_total": 1},
+        _iso(5),
+    )
+    widget = {"type": "4tlog.faz_health", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["value"] == "1/1 healthy"
+
+
+def test_get_widget_value_faz_health_none_when_target_counts_absent():
+    write_snapshot("s1", "summary", {"devices_logging": 5}, _iso(5))
+    widget = {"type": "4tlog.faz_health", "source_instance": "s1"}
+
+    result = get_widget_value(widget)
+
+    assert result["value"] is None
+
+
+# ── fixed_range: Total Rules / Total Managed Firewalls always chart 30d ──
+
+
+def test_firewall_managed_count_and_rule_count_total_have_fixed_30d_range():
+    assert WIDGET_CATALOG["4thealth.firewall_managed_count"]["fixed_range"] == "30d"
+    assert WIDGET_CATALOG["4thealth.rule_count_total"]["fixed_range"] == "30d"
+
+
+def test_get_widget_series_ignores_passed_range_key_for_fixed_range_widgets():
+    write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(60 * 24 * 20))  # 20 days ago
+    write_snapshot("s1", "summary", {"rule_count_total": 130}, _iso(5))
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1"}
+
+    # Page-wide range is "1d", but the widget's fixed_range of 30d should win.
+    result = get_widget_series(widget, "1d")
+
+    assert [v for _, v in result["points"]] == [100, 130]
+
+
+def test_get_widget_series_range_label_reflects_fixed_range_not_page_range():
+    write_snapshot("s1", "summary", {"rule_count_total": 100}, _iso(5))
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["range_label"] == "30d"
+
+
+def test_get_widget_series_range_label_reflects_page_range_for_non_pinned_widgets():
+    write_snapshot("s1", "summary", {"firewall_online_count": 5}, _iso(5))
+    widget = {"type": "4thealth.firewall_online_count", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert result["range_label"] == "1d"
+
+
+def test_get_widget_series_fixed_range_widget_still_excludes_points_outside_30d():
+    write_snapshot("s1", "summary", {"rule_count_total": 999}, _iso(60 * 24 * 40))  # 40 days ago
+    write_snapshot("s1", "summary", {"rule_count_total": 5}, _iso(10))
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "1d")
+
+    assert [v for _, v in result["points"]] == [5]
+
+
+# ── group_by_system: dashboard section grouping ──────────────────────────
+
+
+def test_group_by_system_buckets_widgets_by_source_system():
+    widgets = [
+        {"type": "4tlog.silent_devices", "index": 1},
+        {"type": "4thealth.rule_count_total", "index": 2},
+        {"type": "4tlog.log_volume_trend", "index": 3},
+    ]
+
+    sections = group_by_system(widgets)
+
+    by_system = {s["system"]: s for s in sections}
+    assert [w["index"] for w in by_system["4tlog"]["widgets"]] == [1, 3]
+    assert [w["index"] for w in by_system["4thealth"]["widgets"]] == [2]
+
+
+def test_group_by_system_orders_4tlog_before_4thealth():
+    widgets = [
+        {"type": "4thealth.rule_count_total", "index": 1},
+        {"type": "4tlog.silent_devices", "index": 2},
+    ]
+
+    sections = group_by_system(widgets)
+
+    assert [s["system"] for s in sections] == ["4tlog", "4thealth"]
+
+
+def test_group_by_system_titles_4thealth_as_4thealth_plus():
+    sections = group_by_system([{"type": "4thealth.rule_count_total", "index": 1}])
+
+    assert sections[0]["title"] == "4thealth-plus"
+
+
+# ── tooltip: description + current_summary ───────────────────────────────
+
+
+def test_every_catalog_entry_has_a_description():
+    for widget_type, entry in WIDGET_CATALOG.items():
+        assert entry.get("description"), f"{widget_type} is missing a description"
+
+
+def test_current_summary_for_scalar_value():
+    assert _current_summary({"value": 42, "collected_at": _iso(5)}) == "Current: 42"
+
+
+def test_current_summary_for_line_chart_uses_latest_point():
+    data = {"chart": "line", "points": [("t1", 10), ("t2", 20)]}
+    assert _current_summary(data) == "Current: 20"
+
+
+def test_current_summary_for_line_chart_with_no_points_is_none():
+    assert _current_summary({"chart": "line", "points": []}) is None
+
+
+def test_current_summary_for_bar_chart_lists_all_bars():
+    data = {"chart": "bar", "data": {"shadow": 5, "unhit": 65}}
+    assert _current_summary(data) == "Current: shadow 5, unhit 65"
+
+
+def test_current_summary_for_pending_widget_is_none():
+    assert _current_summary({"pending": True, "value": None}) is None
+
+
+def test_current_summary_for_no_data_is_none():
+    assert _current_summary(None) is None
+
+
+def test_annotate_with_data_includes_description_and_current_summary():
+    write_snapshot("s1", "summary", {"rule_count_total": 42}, _iso(5))
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, range_key="30d")
+
+    assert annotated["description"] == WIDGET_CATALOG["4thealth.rule_count_total"]["description"]
+    assert annotated["current_summary"] == "Current: 42"
