@@ -19,16 +19,14 @@ def test_line_chart_renders_polyline_for_multiple_points(app):
     assert "<svg" in html
 
 
-def test_line_chart_shows_min_and_max_as_text(app):
-    html = _render_line_chart(app, [("t0", 10), ("t1", 30)], 10, 30)
-    assert "10" in html
-    assert "30" in html
-
-
 def test_line_chart_renders_flat_line_for_single_point(app):
     html = _render_line_chart(app, [("t0", 42)], 42, 42)
     assert "<line" in html
-    assert "42" in html
+
+
+def test_line_chart_has_no_min_max_caption(app):
+    html = _render_line_chart(app, [("t0", 10), ("t1", 30)], 10, 30)
+    assert "chart-range-label" not in html
 
 
 def test_bar_chart_renders_rect_per_entry_with_labels(app):

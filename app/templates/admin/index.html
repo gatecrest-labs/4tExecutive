@@ -8,6 +8,7 @@
   <button type="button" class="admin-tab{% if active_panel == 'sources' %} active{% endif %}" data-panel="sources">Sources</button>
   <button type="button" class="admin-tab{% if active_panel == 'users' %} active{% endif %}" data-panel="users">Users</button>
   <button type="button" class="admin-tab{% if active_panel == 'settings' %} active{% endif %}" data-panel="settings">Settings</button>
+  <button type="button" class="admin-tab{% if active_panel == 'scoring' %} active{% endif %}" data-panel="scoring">Scoring</button>
   <button type="button" class="admin-tab{% if active_panel == 'system' %} active{% endif %}" data-panel="system">System</button>
 </div>
 
@@ -147,6 +148,49 @@
       <code>Europe/London</code>. The full list is the
       <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" rel="noopener">tz database</a>.
     </p>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+</div>
+
+<!-- ═══════════════════════  SCORING PANEL  ═══════════════════════ -->
+<div class="admin-panel{% if active_panel == 'scoring' %} active{% endif %}" id="panel-scoring">
+  <div class="admin-panel-header">
+    <h3>Scoring</h3>
+  </div>
+
+  {% if scoring_error %}<div class="alert alert-danger">{{ scoring_error }}</div>{% endif %}
+
+  <p class="text-muted" style="font-size:.85rem">
+    Weights and formula parameters behind the Scorecard's domain grades — see
+    each domain's "how this score is computed" panel for the live formula.
+  </p>
+
+  <form method="post" action="{{ url_for('admin.update_scoring_route') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <h3>Domain weights</h3>
+    <p class="text-muted" style="font-size:.85rem">
+      How much each domain contributes to the overall score. Unmeasured
+      domains are excluded from the weighted mean, not zeroed out.
+    </p>
+    {% for name, weight in scoring.domain_weights.items() %}
+    <div class="form-group">
+      <label for="domain_weights.{{ name }}">{{ name }}</label>
+      <input class="form-control" type="number" step="any" id="domain_weights.{{ name }}" name="domain_weights.{{ name }}" value="{{ weight }}">
+    </div>
+    {% endfor %}
+
+    <h3>Formula parameters</h3>
+    {% for name, params in scoring.domains.items() %}
+    <h4>{{ name }}</h4>
+    {% for key, value in params.items() %}
+    <div class="form-group">
+      <label for="domains.{{ name }}.{{ key }}">{{ key }}</label>
+      <input class="form-control" type="number" step="any" id="domains.{{ name }}.{{ key }}" name="domains.{{ name }}.{{ key }}" value="{{ value }}">
+    </div>
+    {% endfor %}
+    {% endfor %}
+
     <button class="btn btn-primary" type="submit">Save</button>
   </form>
 </div>

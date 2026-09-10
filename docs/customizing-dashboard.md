@@ -33,6 +33,17 @@ widgets), e.g. "▲ +30 (30d)" means it rose by 30 over the last 30 days.
 normal for a metric that only changes occasionally (like ADOM count), not a
 sign of a stuck widget.
 
+Every widget's data also now carries a second, independent baseline
+comparison computed from the `metric_points` time series (see
+[architecture.md](architecture.md#derived-metric-time-series)):
+`now`/`baseline_delta`/`better`/`series`, compared against a `compare_to`
+baseline (`yesterday`/`7d`/`30d`/`quarter_start`) and charted over a
+`sparkline` window (`30d`/`90d`/`1y`) — both selected by cookie, replacing
+the old single `range` cookie for that purpose (`?range=` still works and,
+when its value is itself a valid sparkline window, also sets `sparkline`).
+No dashboard template renders these fields yet — they're the data layer a
+future scorecard/trend-board UI reads from.
+
 **Dimmed widget with an amber "as of" line**: the widget's *underlying*
 data (not just when 4tExecutive last polled) is stale — e.g. Configuration
 Posture is dimmed when its device-review rollup hasn't refreshed in the
@@ -65,6 +76,7 @@ Widgets come from a predefined catalog in [`app/widgets.py`](../app/widgets.py)
        "source_system": "4thealth",
        "metric_type": "summary",
        "field": "hygiene_score",
+       "direction": "higher",
        "default_size": "1x1",
    },
    ```
@@ -75,13 +87,29 @@ Widgets come from a predefined catalog in [`app/widgets.py`](../app/widgets.py)
      source into `metrics.db` (see `write_snapshot` in
      [`app/metrics_db.py`](../app/metrics_db.py) and the collector's poll
      logic in [`app/collector.py`](../app/collector.py)).
+   - `direction` is required: `"higher"` or `"lower"` if a rising/falling
+     value is respectively better/worse, `"none"` if neither (e.g. a
+     fleet-size count). Drives `data["better"]` — see
+     [architecture.md](architecture.md#derived-metric-time-series).
    - `default_size` is one of `1x1`, `2x1`, `2x2`.
+   - Optional `metric_key`: only needed when `field` is a composite dict
+     with no single scalar (e.g. `device_review`) — points at the dotted
+     nested-scalar key the extractor registry actually produces (see below)
+     for `now`/`baseline_delta`/`series` purposes. Defaults to `field`.
 
 2. If this widget pulls from a source system that isn't polled yet, the
    collector needs to know how to fetch and store that metric — see
    [Adding a source system](#adding-a-source-system) below.
 
-3. No route or template change is required — the Dashboard's "Edit" mode
+3. Add an extractor for the new field to `EXTRACTORS` in
+   [`app/metric_extract.py`](../app/metric_extract.py) — a
+   `metric_key -> callable(payload) -> float | None`. A test asserts every
+   catalog `field` has one (`tests/test_metric_extract.py`), so a missing
+   extractor fails CI, not just at runtime. Use `_nested(*path)` for a plain
+   (possibly nested) numeric field, or a custom function for anything that
+   needs encoding (see `_last_backup_status`, `_fleet_availability_pct`).
+
+4. No route or template change is required — the Dashboard's "Edit" mode
    lists everything in `WIDGET_CATALOG` automatically, and
    `get_widget_value()` looks up the latest cached value generically from
    `field`.
@@ -129,40 +157,40 @@ within a tab (e.g. "can manage sources" vs. "can manage users" are both just
 `admin`); see [architecture.md](architecture.md) if you need to split that
 out.
 
-## Dashboard layouts
+## The Trend Board's row universe
 
-Each user's widget arrangement is stored per-username via
+`GET /board` (`app/board.py`) is a **fixed, comprehensive** board, not a
+per-user layout: it shows one row per `WIDGET_CATALOG` entry × each
+*enabled* source whose `system` matches, via `app/widgets.py:default_layout()`
+— the same selection `default_layout()` has always used as the personalized
+dashboard's fallback (see below). Sort/filter/domain-filter/source-filter
+are the customization mechanism instead of manually placing widgets.
+
+A few entries are skipped from this universe: host metrics (`4texecutive.*`,
+which live on Admin > System) and `firewall_online_count` always (it's
+folded into Fleet Availability's online/total ratio — `firewall_managed_count`
+stays as its own row, since that raw count is useful on its own even though
+it's also part of the ratio), plus AI Usage, Configuration Posture and Rule
+Hygiene unless the source's latest snapshot actually reports
+`ai_enabled: true` / `device_review` / `rule_hygiene` respectively — a
+source on an older release that never sends those fields shouldn't get a
+permanently empty row.
+
+Every board row belongs to one of the six Scorecard domains
+(`app/board.py`'s `WIDGET_DOMAIN`), which is a presentation-only mapping
+distinct from `app/domains.py`'s `MEMBER_METRICS` (the fleet-score *inputs*)
+— a metric can score under one domain and display under another when that's
+the better fit for browsing.
+
+## Saved per-user layouts (currently unused by any page)
+
+Each user's widget arrangement can still be stored per-username via
 [`app/layouts.py`](../app/layouts.py) (`get_layout`/`save_layout`), backed by
 `metrics.db`. A layout is an ordered list of placed widget instances, each
 referencing a `WIDGET_CATALOG` type, a `source_instance` id, a size, and a
-date range.
-
-**There is currently no UI to build one.** `POST /dashboard/layout`
-(`app/routes/dashboard_routes.py`) accepts a layout and saves it, and Edit
-mode (`/dashboard/edit`) renders whatever's saved, but nothing in
-`app/templates/dashboard.html` actually calls that route yet — no
-add/remove/resize controls exist. Until that's built, the only way to set
-a specific layout is `save_layout(username, widgets)` directly (e.g. via
-`docker compose exec app python -c "..."` in a running deployment).
-
-**Default layout, when nothing's saved**: `default_layout()`
-(`app/widgets.py`) generates one widget per `WIDGET_CATALOG` entry × each
-*enabled* source whose `system` matches that entry's `source_system` — so
-a user with no saved layout sees everything currently configured instead
-of a blank dashboard. A few entries are skipped: host metrics
-(`4texecutive.*`, which live on Admin > System) and `firewall_online_count`
-always (it's folded into Fleet Availability's online/total ratio —
-`firewall_managed_count` stays as its own "Total Managed Firewalls" tile,
-since that raw count is useful on its own even though it's also part of the
-ratio), plus AI Usage, Configuration Posture and Rule Hygiene
-unless the source's latest snapshot actually reports `ai_enabled: true` /
-`device_review` / `rule_hygiene` respectively — a source on an older release
-that never sends those fields shouldn't get permanently empty tiles. Saved
-layouts containing any of them still render normally.
-`app/routes/dashboard_routes.py`'s `index()`/`edit()`
-use this as a fallback (`get_layout(username) or default_layout()`); a
-user with any saved layout, even a single widget, always sees exactly
-that instead — the default only fills in for someone who's saved nothing
-at all. Each widget's card shows the source instance's `name` next to its
-label so widgets from different instances of the same system stay
-distinguishable.
+date range. `POST /dashboard/layout` (`app/routes/dashboard_routes.py`)
+accepts a layout and saves it, and Edit mode (`/dashboard/edit`) renders
+whatever's saved — but since the Trend Board became the fixed, comprehensive
+view above, nothing reads a saved layout to decide what to display anymore.
+These endpoints remain functional in case a future personalized view needs
+them again.

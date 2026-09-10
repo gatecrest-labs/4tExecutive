@@ -17,18 +17,22 @@ cache.
 
 ## Features
 
-- **Dashboard tab** — each user builds their own layout from a predefined
-  widget catalog, arranged on a `1x1` / `2x1` / `2x2` grid. Widgets include:
-  hygiene score, device version compliance % (with end-of-support versions
-  flagged), pending config diffs, app config backup status, fleet
-  availability (firewalls online / total), configuration posture (a
-  pass/fail rollup of a 26-check device review), rule hygiene (shadowed,
-  unhit, unlogged, expired, disabled rules), AI usage, FortiAnalyzer health,
-  log volume trend, and silent-device count (appliances that have stopped
-  sending logs). See "Reading the dashboard" below for what the colors and
-  symbols mean.
+- **Scorecard (landing page)** — six graded domains (Availability, Config
+  Posture, Vulnerability, Policy Hygiene, Logging & Visibility, Lifecycle &
+  Support), each rolled up from the widget catalog's metrics into a 0-100
+  score and an A-F grade, plus an overall grade for the fleet. Click a
+  domain card to see its score history, member metrics, and the live
+  formula behind the grade. See "Reading the scorecard" below.
+- **Board tab (Trend Board)** — one row per metric per source, grouped by
+  domain: current value, delta vs a selectable baseline and vs 30 days ago,
+  a sparkline with a target line, a target meter, and a freshness stamp.
+  Sortable by status/delta/name, filterable by domain/source, exportable as
+  CSV. Fixed and comprehensive (every catalog metric x every enabled
+  source) rather than per-user — see "Reading the board" below for what the
+  colors and symbols mean.
 - **Admin tab** — a single tabbed page: Sources (add/remove/refresh the
   source systems 4tExecutive polls), Users, Settings (display timezone),
+  Scoring (the weights and formula parameters behind each domain's grade),
   and System (this server's own CPU/Memory/Disk utilization, charted over a
   selectable time range). Gated behind the `admin` tab permission in
   `config/groups.json`.
@@ -41,29 +45,39 @@ cache.
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit
 together.
 
-## Reading the dashboard
+## Reading the scorecard
 
-4tExecutive is designed to be scanned in five seconds, not read widget by
-widget. Three visual cues carry that:
+Each of the six domains gets a **letter grade** (A ≥ 90, B ≥ 80, C ≥ 70,
+D ≥ 60, F below that) computed from a start-at-100-and-subtract formula over
+that domain's metrics — e.g. Availability starts from online/managed
+firewalls, Policy Hygiene subtracts for rule findings per 1000 rules. A
+domain with no measured inputs yet (Vulnerability and Lifecycle & Support,
+until their underlying metrics ship) shows **"not yet measured"** instead of
+a grade — that's not a red flag, just data that doesn't exist yet.
 
-**The posture strip**, one row above the range selector, is the single
-"is anything wrong?" answer:
+The **overall grade** is a weighted mean across whichever domains are
+currently measured (an unmeasured domain is excluded, not scored as zero),
+and its color follows the worst measured domain's grade — one red domain
+makes the whole scorecard red, the same "worst wins" logic as the Board's
+posture strip.
 
-| Pill | Meaning |
-|---|---|
-| 🟢 **OK** | Every widget with a defined threshold is within its healthy range. |
-| 🟡 **Attention** | At least one widget has crossed its warning threshold. A count ("N critical · M attention") links to the first one. |
-| 🔴 **Critical** | At least one widget has crossed its critical threshold. |
+Click any domain card to see its score history (30/90/365 days), the
+individual metrics feeding it with their own current value and delta, and a
+"how this score is computed" panel that prints the formula with the domain's
+actual current numbers substituted — the same math shown, so a director can
+verify a grade rather than take it on faith. The weights and caps behind
+every formula are editable in Admin → Scoring.
 
-The strip also shows the age of the oldest data on the page (e.g. "oldest
-data: 12 min ago"), tinted amber if any source hasn't reported in longer
-than expected — a hint that a number might be stale rather than actually
-fine.
+## Reading the board
 
-**Per-widget colored borders** apply the same green/amber/red logic to
-individual widgets that have a meaningful threshold:
+The Trend Board is one row per (metric, source), grouped into the same six
+domains as the Scorecard, sorted (status/delta/name) and filtered
+(domain/source) via the controls above the table.
 
-| Widget | Green | Amber | Red |
+**The status dot** on each row is that metric's own RAG state, same
+thresholds the Scorecard's formulas read from:
+
+| Metric | Green | Amber | Red |
 |---|---|---|---|
 | Hygiene Score | ≥ 90 | ≥ 75 | < 75 |
 | Device Version Compliance % | ≥ 95 | ≥ 85 | < 85 |
@@ -72,16 +86,26 @@ individual widgets that have a meaningful threshold:
 | App Config Backup | reports "ok" | — | anything else |
 | Configuration Posture, Silent Devices | no critical findings / no silent devices | — | any critical finding / any silent device |
 
-A widget with no defined threshold (rule count, ADOM count, version
-breakdown, rule hygiene, AI usage, host metrics, FortiAnalyzer health, log
-volume) is purely informational and never colored — silence there just
-means "nothing to alert on," not "unmeasured."
+A gray dot (rule count, ADOM count, version breakdown, rule hygiene, AI
+usage, FortiAnalyzer health, log volume) means the metric has no defined
+threshold — purely informational, not "unmeasured." Its Target column reads
+"informational" instead of a target/meter for the same reason.
 
-**Delta arrows** next to a trend chart's current value show direction of
-change since the start of the selected range — "▲ +3", "▼ −2", or "— 0" —
-in neutral gray. The arrow only means "up" or "down," not "good" or "bad"
-(a rising rule count isn't inherently a problem); the color-coded border is
-what actually flags a concern.
+**Delta columns** ("vs {compare to}" and "vs 30d") show direction with an
+arrow and magnitude ("▲ +3", "▼ −2", "— 0"), colored by whether that
+direction is actually an improvement for this specific metric — green when
+better, red when worse, gray when the metric has no defined direction (a
+rising rule count isn't inherently good or bad). The legend line under the
+table restates this.
+
+**The sparkline** charts the selected window (30d/90d/1y) with the metric's
+healthy target as a dashed line; hover any point for its exact value and
+date. **Target meters** fill toward 100% as a "higher is better" metric
+approaches its green threshold, or drain toward empty as a "lower is
+better" metric rises toward its amber threshold.
+
+**Export CSV** downloads the exact rows currently shown (same
+sort/filter/baseline as the page).
 
 On the Admin → Sources page, each source's last-poll status is a small dot:
 🟢 **OK** (last poll succeeded), 🔴 **Failed** (hover for the error), or

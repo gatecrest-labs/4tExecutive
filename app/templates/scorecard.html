@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_charts.html" as charts %}
+{% block content %}
+<div class="scorecard-header">
+  <h1>Security Scorecard</h1>
+  {% if overall.score is not none %}
+  <div class="scorecard-overall rag-{{ overall.rag }}">
+    <span class="scorecard-grade">{{ overall.grade }}</span>
+    <div class="scorecard-overall-text">
+      <p class="scorecard-overall-score">Overall · {{ overall.score }}/100</p>
+      <p class="scorecard-overall-delta">
+        {% if overall.delta is not none %}
+          {% if overall.delta > 0 %}▲ +{{ overall.delta }}{% elif overall.delta < 0 %}▼ {{ overall.delta }}{% else %}— no change{% endif %} vs last week
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  {% else %}
+  <p class="scorecard-not-measured">not yet measured — no sources configured yet</p>
+  {% endif %}
+</div>
+
+<div class="domain-card-grid">
+  {% for card in cards %}
+  <a class="domain-card{% if card.rag %} rag-{{ card.rag }}{% endif %}" href="{{ url_for('scorecard.detail', name=card.name) }}">
+    <p class="domain-card-label">{{ card.label }}</p>
+    {% if card.score is not none %}
+    <div class="domain-card-score">
+      <span class="domain-card-grade">{{ card.grade }}</span>
+      <span class="domain-card-number">{{ card.score }}<span class="domain-card-denominator">/100</span></span>
+    </div>
+    <p class="domain-card-why">{{ card.why }}</p>
+    {{ charts.sparkline_chart(card.sparkline, card.target, card.ticks) }}
+    {% if card.delta is not none %}
+    <p class="domain-card-delta">
+      {% if card.delta > 0 %}▲ +{{ card.delta }}{% elif card.delta < 0 %}▼ {{ card.delta }}{% else %}— no change{% endif %} pts 7d
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="domain-card-not-measured">not yet measured</p>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="what-changed-panel">
+  <h2>What changed <span class="what-changed-window">last 7 days</span></h2>
+  {% if what_changed %}
+  <ul class="what-changed-list">
+    {% for event in what_changed %}
+    <li class="what-changed-item">
+      <span class="what-changed-severity what-changed-{{ event.severity }}">{{ event.severity }}</span>
+      {% if event.domain %}
+      <a href="{{ url_for('scorecard.detail', name=event.domain) }}">{{ event.title }}</a>
+      {% else %}
+      <span>{{ event.title }}</span>
+      {% endif %}
+      <span class="what-changed-ts">{{ event.ts | local_time }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="what-changed-empty">Nothing's changed in the last 7 days.</p>
+  {% endif %}
+</div>
+{% endblock %}

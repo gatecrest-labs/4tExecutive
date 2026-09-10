@@ -10,6 +10,7 @@ from app.app_settings import get_setting, set_setting
 from app.auth import create_user, delete_user, get_user
 from app.collector import poll_now, poll_status
 from app.decorators import tab_required
+from app.domains import get_scoring_config, save_scoring_config
 from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.local_time import DEFAULT_TIMEZONE, is_valid_timezone
 from app.sources import add_source, delete_source, list_sources
@@ -18,7 +19,9 @@ from app.widgets import DEFAULT_RANGE, RANGES, get_widget_series
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
-def _render_admin(active_panel, sources_error=None, users_error=None, settings_error=None):
+def _render_admin(
+    active_panel, sources_error=None, users_error=None, settings_error=None, scoring_error=None
+):
     from app.atomic_io import read_json
     from app.auth import USERS_PATH
 
@@ -38,6 +41,8 @@ def _render_admin(active_panel, sources_error=None, users_error=None, settings_e
         users_error=users_error,
         timezone=get_setting("timezone", DEFAULT_TIMEZONE),
         settings_error=settings_error,
+        scoring=get_scoring_config(),
+        scoring_error=scoring_error,
     )
 
 
@@ -146,6 +151,40 @@ def update_settings_route():
         )
     set_setting("timezone", tz)
     return redirect(url_for("admin.settings"))
+
+
+@bp.route("/scoring", methods=["GET"])
+@tab_required("admin")
+def scoring():
+    return _render_admin("scoring")
+
+
+@bp.route("/scoring", methods=["POST"])
+@tab_required("admin")
+def update_scoring_route():
+    config = get_scoring_config()
+
+    def _parse(field_name):
+        raw = request.form.get(field_name)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f'"{field_name}" must be a number, got "{raw}".') from None
+        if value < 0:
+            raise ValueError(f'"{field_name}" must not be negative.')
+        return value
+
+    try:
+        for name in config["domain_weights"]:
+            config["domain_weights"][name] = _parse(f"domain_weights.{name}")
+        for name, params in config["domains"].items():
+            for key in params:
+                params[key] = _parse(f"domains.{name}.{key}")
+    except ValueError as exc:
+        return _render_admin("scoring", scoring_error=str(exc))
+
+    save_scoring_config(config)
+    return redirect(url_for("admin.scoring"))
 
 
 @bp.route("/system", methods=["GET"])

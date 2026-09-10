@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% import "_charts.html" as charts %}
+{% block content %}
+<div class="board-header">
+  <h1>Metrics Board</h1>
+</div>
+
+<form method="get" class="board-controls" id="boardControls">
+  <div class="board-control-group">
+    <span class="board-control-label">Compare to</span>
+    {% for key, text in [("yesterday", "yesterday"), ("7d", "7 days ago"), ("30d", "30 days ago"), ("quarter_start", "start of quarter")] %}
+    <button type="submit" name="compare_to" value="{{ key }}" class="board-toggle{% if compare_to == key %} active{% endif %}">{{ text }}</button>
+    {% endfor %}
+  </div>
+  <div class="board-control-group">
+    <span class="board-control-label">Sparkline</span>
+    {% for key in ["30d", "90d", "1y"] %}
+    <button type="submit" name="range" value="{{ key }}" class="board-toggle{% if sparkline == key %} active{% endif %}">{{ key }}</button>
+    {% endfor %}
+  </div>
+  <div class="board-control-group">
+    <label class="board-control-label" for="domainFilter">Domain</label>
+    <select id="domainFilter" name="domain" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for d in domains %}
+      <option value="{{ d.name }}"{% if domain_filter == d.name %} selected{% endif %}>{{ d.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="board-control-group">
+    <label class="board-control-label" for="sourceFilter">Source</label>
+    <select id="sourceFilter" name="source" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for s in sources %}
+      <option value="{{ s.id }}"{% if source_filter == s.id %} selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="board-sort-row">
+  Sort:
+  {% for key, text in [("status", "status"), ("delta", "delta"), ("name", "name")] %}
+  <a class="board-sort-link{% if sort == key %} active{% endif %}" href="{{ url_for('dashboard.index', sort=key, domain=domain_filter, source=source_filter) }}">{{ text }}</a>
+  {% endfor %}
+  <a class="board-csv-link" href="{{ url_for('dashboard.board_csv') }}">Export CSV</a>
+</div>
+
+{% set ns = namespace(current_domain=none) %}
+<table class="board-table">
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Now</th>
+      <th>vs {{ compare_to.replace('_', ' ') }}</th>
+      <th>vs 30d</th>
+      <th>Trend</th>
+      <th>Target</th>
+      <th>As of</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    {% if row.domain != ns.current_domain %}
+    {% set ns.current_domain = row.domain %}
+    <tr class="board-group-row"><td colspan="7">{{ row.domain_label }}</td></tr>
+    {% endif %}
+    <tr class="board-row{% if row.stale %} board-row-stale{% endif %}">
+      <td>
+        <span class="board-status-dot board-status-{{ row.status or 'none' }}"></span>
+        <span class="board-metric-label">{{ row.label }}</span>
+        <span class="board-metric-source">{{ row.source_name }}</span>
+      </td>
+      <td class="board-now">{% if row.now is not none %}{{ row.now }}{{ row.unit or '' }}{% else %}&mdash;{% endif %}</td>
+      <td class="{% if row.better_compare_to == true %}board-delta-better{% elif row.better_compare_to == false %}board-delta-worse{% else %}board-delta-neutral{% endif %}">
+        {% if row.delta_compare_to is not none %}
+          {% if row.delta_compare_to > 0 %}&#9650; +{{ row.delta_compare_to }}{% elif row.delta_compare_to < 0 %}&#9660; {{ row.delta_compare_to }}{% else %}&mdash; 0{% endif %}
+        {% else %}&mdash;{% endif %}
+      </td>
+      <td class="{% if row.better_30d == true %}board-delta-better{% elif row.better_30d == false %}board-delta-worse{% else %}board-delta-neutral{% endif %}">
+        {% if row.delta_30d is not none %}
+          {% if row.delta_30d > 0 %}&#9650; +{{ row.delta_30d }}{% elif row.delta_30d < 0 %}&#9660; {{ row.delta_30d }}{% else %}&mdash; 0{% endif %}
+        {% else %}&mdash;{% endif %}
+      </td>
+      <td class="board-sparkline-cell">{{ charts.sparkline_chart(row.series, row.target, row.ticks) }}</td>
+      <td class="board-target-cell">
+        {% if row.target is not none %}
+          <div class="board-target-value">{{ row.target }}</div>
+          {% if row.progress is not none %}
+          <div class="board-target-meter"><div class="board-target-meter-fill" style="width: {{ (row.progress * 100) | round(1) }}%"></div></div>
+          {% endif %}
+        {% else %}
+          <span class="board-target-informational">informational</span>
+        {% endif %}
+      </td>
+      <td class="board-as-of{% if row.stale %} board-as-of-stale{% endif %}">{{ row.collected_at | local_time if row.collected_at else '&mdash;' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p class="board-legend">Arrow shows the direction of change (up/down); color shows whether that's better or worse for this metric — green is better, red is worse, gray means this metric has no defined direction.</p>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/board.js') }}"></script>
+{% endblock %}

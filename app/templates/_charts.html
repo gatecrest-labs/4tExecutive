@@ -8,7 +8,6 @@
   <polyline fill="none" stroke="var(--accent)" stroke-width="2" points="{% for t, v in points %}{{ '%.2f' | format((loop.index0 / (n - 1)) * 240) }},{{ '%.2f' | format(56 - ((v - min_v) / span) * 52) }}{% if not loop.last %} {% endif %}{% endfor %}" />
   {% endif %}
 </svg>
-<p class="chart-range-label"><span>{{ min_v }}</span> – <span>{{ max_v }}</span></p>
 {% endmacro %}
 
 {% macro bar_chart(data, highlight=[], rotate_labels=False) %}
@@ -34,6 +33,65 @@
   <text x="{{ '%.2f' | format(bar_cx) }}" y="78" text-anchor="middle" class="chart-bar-label">{{ version }}</text>
   {% endif %}
   {% endfor %}
+</svg>
+{% endmacro %}
+
+{% macro sparkline_chart(points, target=none, ticks=[]) %}
+{# Compact card sparkline: 2px rounded line, direct label on the last point,
+   a dashed hairline target if given. No axes — this is a glance chart. #}
+{% set n = points | length %}
+<svg class="chart-svg chart-sparkline" viewBox="0 0 240 60" preserveAspectRatio="none">
+  {% if n == 0 %}
+  {% elif n == 1 %}
+  <line x1="0" y1="30" x2="240" y2="30" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
+  {% else %}
+  {% set values = points | map(attribute="value") | list %}
+  {% set min_v = values | min %}
+  {% set max_v = values | max %}
+  {% set span = (max_v - min_v) if max_v != min_v else 1 %}
+  {% if target is not none and target >= min_v and target <= max_v %}
+  <line x1="0" y1="{{ '%.2f' | format(52 - ((target - min_v) / span) * 48) }}" x2="240" y2="{{ '%.2f' | format(52 - ((target - min_v) / span) * 48) }}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3" />
+  {% endif %}
+  <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="{% for p in points %}{{ '%.2f' | format((loop.index0 / (n - 1)) * 240) }},{{ '%.2f' | format(52 - ((p.value - min_v) / span) * 48) }}{% if not loop.last %} {% endif %}{% endfor %}" />
+  {% for p in points %}
+  <circle class="chart-hover-point" cx="{{ '%.2f' | format((loop.index0 / (n - 1)) * 240) }}" cy="{{ '%.2f' | format(52 - ((p.value - min_v) / span) * 48) }}" r="5" fill="transparent" data-ts="{{ p.ts }}" data-value="{{ p.value }}" />
+  {% endfor %}
+  {% set last = points[-1] %}
+  <circle cx="240" cy="{{ '%.2f' | format(52 - ((last.value - min_v) / span) * 48) }}" r="2.5" fill="var(--accent)" />
+  {% endif %}
+  {% for tick in ticks %}
+  <polygon class="chart-event-tick" points="{{ '%.2f' | format(tick.x - 4) }},58 {{ '%.2f' | format(tick.x + 4) }},58 {{ '%.2f' | format(tick.x) }},51"><title>{{ tick.title }}</title></polygon>
+  {% endfor %}
+</svg>
+{% endmacro %}
+
+{% macro domain_score_chart(points, target=none, ticks=[]) %}
+{# Larger detail-page chart: 2px line, hairline grid, dashed target line,
+   direct value label on the last point. #}
+{% set n = points | length %}
+<svg class="chart-svg chart-domain-score" viewBox="0 0 600 200" preserveAspectRatio="none">
+  {% for frac in [0, 0.25, 0.5, 0.75, 1] %}
+  <line x1="0" y1="{{ '%.2f' | format(180 - frac * 160) }}" x2="600" y2="{{ '%.2f' | format(180 - frac * 160) }}" stroke="var(--border)" stroke-width="1" />
+  {% endfor %}
+  {% if n == 0 %}
+  <text x="300" y="100" text-anchor="middle" class="chart-empty-label">Not enough history yet</text>
+  {% else %}
+  {% if target is not none %}
+  <line x1="0" y1="{{ '%.2f' | format(180 - (target / 100) * 160) }}" x2="600" y2="{{ '%.2f' | format(180 - (target / 100) * 160) }}" stroke="var(--status-amber)" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="596" y="{{ '%.2f' | format(180 - (target / 100) * 160 - 4) }}" text-anchor="end" class="chart-target-label">target {{ target }}</text>
+  {% endif %}
+  {% if n == 1 %}
+  <line x1="0" y1="{{ '%.2f' | format(180 - (points[0].value / 100) * 160) }}" x2="600" y2="{{ '%.2f' | format(180 - (points[0].value / 100) * 160) }}" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
+  {% else %}
+  <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="{% for p in points %}{{ '%.2f' | format((loop.index0 / (n - 1)) * 600) }},{{ '%.2f' | format(180 - (p.value / 100) * 160) }}{% if not loop.last %} {% endif %}{% endfor %}" />
+  {% endif %}
+  {% set last = points[-1] %}
+  <circle cx="600" cy="{{ '%.2f' | format(180 - (last.value / 100) * 160) }}" r="3" fill="var(--accent)" />
+  <text x="596" y="{{ '%.2f' | format(180 - (last.value / 100) * 160 - 8) }}" text-anchor="end" class="chart-direct-label">{{ last.value }}</text>
+  {% for tick in ticks %}
+  <polygon class="chart-event-tick" points="{{ '%.2f' | format(tick.x - 8) }},198 {{ '%.2f' | format(tick.x + 8) }},198 {{ '%.2f' | format(tick.x) }},184"><title>{{ tick.title }}</title></polygon>
+  {% endfor %}
+  {% endif %}
 </svg>
 {% endmacro %}
 

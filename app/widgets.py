@@ -5,7 +5,12 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime, timedelta
 
-from app.metrics_db import get_history, get_latest
+from app.metrics_db import (
+    get_history,
+    get_latest,
+    get_metric_latest_at_or_before,
+    get_metric_series,
+)
 from app.sources import get_source, list_sources
 from app.thresholds import get_thresholds
 
@@ -87,6 +92,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "hygiene_score",
+        "direction": "higher",
         # Taller than 1x1 so the gauge (arc + needle + value) has room to
         # render legibly instead of being squashed by the standard card height.
         "default_size": "1x2",
@@ -98,6 +104,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "version_compliance_pct",
+        "direction": "higher",
         "default_size": "1x2",
         "rag": {"direction": "higher", "green": 95, "amber": 85},
     },
@@ -107,6 +114,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "pending_config_diff_count",
+        "direction": "lower",
         "default_size": "1x1",
         "rag": {"direction": "lower", "green": 0, "amber": 5},
     },
@@ -116,6 +124,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "last_backup_status",
+        "direction": "higher",
         "default_size": "1x1",
         "rag": {"direction": "string_ok"},
     },
@@ -127,6 +136,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "field": "firewall_online_count",
         "default_size": "1x1",
         "chart_type": "line",
+        "direction": "higher",
     },
     "4thealth.firewall_managed_count": {
         "label": "Total Managed Firewalls",
@@ -134,6 +144,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_managed_count",
+        "direction": "none",
         # Taller than 1x1 — a 30-day line chart plus its range/delta/updated
         # labels doesn't fit in a standard 120px-tall card without the SVG
         # collapsing to 0 height.
@@ -147,6 +158,8 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "firewall_online_count",
+        "metric_key": "fleet_availability_pct",
+        "direction": "higher",
         "default_size": "1x1",
         "chart_type": "line",
         "rag": {"direction": "ratio", "green": 100, "amber": 90},
@@ -157,6 +170,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "rule_count_total",
+        "direction": "none",
         # Same reasoning as firewall_managed_count above.
         "default_size": "1x2",
         "chart_type": "line",
@@ -168,6 +182,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "adom_count",
+        "direction": "none",
         "default_size": "1x1",
     },
     "4thealth.version_breakdown": {
@@ -176,6 +191,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "version_breakdown",
+        "direction": "none",
         "default_size": "2x2",
         "chart_type": "bar",
     },
@@ -185,6 +201,8 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "device_review",
+        "metric_key": "device_review.devices_with_failures",
+        "direction": "lower",
         "default_size": "2x2",
         "chart_type": "bar",
         "rag": {"direction": "higher", "green": 0, "amber": 0},
@@ -195,6 +213,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "ai_usage_24h",
+        "direction": "none",
         "default_size": "2x2",
         "chart_type": "line",
     },
@@ -204,6 +223,8 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4thealth",
         "metric_type": "summary",
         "field": "rule_hygiene",
+        "metric_key": "rule_hygiene.rule_findings_total",
+        "direction": "lower",
         "default_size": "2x2",
         "chart_type": "bar",
     },
@@ -213,6 +234,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "cpu_percent",
+        "direction": "lower",
         "default_size": "1x1",
         "chart_type": "line",
     },
@@ -222,6 +244,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "memory_percent",
+        "direction": "lower",
         "default_size": "1x1",
         "chart_type": "line",
     },
@@ -231,6 +254,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4texecutive",
         "metric_type": "summary",
         "field": "disk_percent",
+        "direction": "lower",
         "default_size": "1x1",
         "chart_type": "line",
     },
@@ -245,6 +269,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         # widget type to compose those three into one display value, so
         # "field" here is unused but kept for catalog-entry consistency.
         "field": "faz_targets_healthy",
+        "direction": "higher",
         "default_size": "2x1",
     },
     "4tlog.log_volume_trend": {
@@ -253,6 +278,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4tlog",
         "metric_type": "summary",
         "field": "log_volume_events_per_sec",
+        "direction": "none",
         "default_size": "2x2",
         "chart_type": "line",
     },
@@ -262,6 +288,8 @@ WIDGET_CATALOG: dict[str, dict] = {
         "source_system": "4tlog",
         "metric_type": "summary",
         "field": "devices_logging",
+        "metric_key": "devices_silent",
+        "direction": "lower",
         "default_size": "2x2",
         "chart_type": "bar",
         "rag": {"direction": "higher", "green": 0, "amber": 0},
@@ -294,9 +322,9 @@ def group_by_system(widgets: list[dict]) -> list[dict]:
         buckets.setdefault(system, []).append(widget)
 
     sections = []
-    for system in SECTION_TITLES:
+    for system, title in SECTION_TITLES.items():
         if system in buckets:
-            sections.append({"system": system, "title": SECTION_TITLES[system], "widgets": buckets.pop(system)})
+            sections.append({"system": system, "title": title, "widgets": buckets.pop(system)})
     for system, widgets_in_bucket in buckets.items():
         sections.append({"system": system, "title": SECTION_TITLES.get(system, system), "widgets": widgets_in_bucket})
     return sections
@@ -354,7 +382,7 @@ def default_layout() -> list[dict]:
     return widgets
 
 
-def _rag_state(value, thresholds: dict) -> str | None:
+def rag_state(value, thresholds: dict) -> str | None:
     """Classify value as green/amber/red per a threshold spec, or None if unclassifiable."""
     if value is None:
         return None
@@ -398,7 +426,7 @@ def _attach_rag(widget_type: str, entry: dict, result: dict, *, line_rag_value=N
         value = line_rag_value
     else:
         return result
-    result["rag"] = _rag_state(value, thresholds)
+    result["rag"] = rag_state(value, thresholds)
     return result
 
 
@@ -491,6 +519,98 @@ RANGES: dict[str, timedelta] = {
     "30d": timedelta(days=30),
 }
 DEFAULT_RANGE = "1d"
+
+# Baseline choices for the "compare to" control (replaces the range cookie
+# for delta purposes — see annotate()'s baseline_delta).
+BASELINES: dict[str, timedelta | None] = {
+    "yesterday": timedelta(days=1),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "quarter_start": None,  # computed dynamically — see baseline_cutoff
+}
+DEFAULT_COMPARE_TO = "yesterday"
+
+# Sparkline windows for annotate()'s "series" — replaces the range cookie
+# for the trend-chart lookback.
+SPARKLINE_WINDOWS: dict[str, timedelta] = {
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+    "1y": timedelta(days=365),
+}
+DEFAULT_SPARKLINE = "30d"
+MAX_SERIES_POINTS = 120
+
+
+def _quarter_start(now: datetime) -> datetime:
+    quarter_start_month = ((now.month - 1) // 3) * 3 + 1
+    return now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def baseline_cutoff(compare_to: str, now: datetime) -> datetime:
+    if compare_to == "quarter_start":
+        return _quarter_start(now)
+    delta = BASELINES.get(compare_to, BASELINES[DEFAULT_COMPARE_TO])
+    return now - delta
+
+
+def _metric_key(entry: dict) -> str:
+    return entry.get("metric_key", entry["field"])
+
+
+def _better(baseline_delta: float | None, direction: str) -> bool | None:
+    """True only when baseline_delta is a real, direction-favorable move.
+
+    A zero delta (no change) or an undirected metric ("none") is never
+    "better" — it's not a positive signal, so it renders as not-better (False
+    for zero delta) or unclassifiable (None for direction "none").
+    """
+    if baseline_delta is None or direction == "none":
+        return None
+    if direction == "higher":
+        return baseline_delta > 0
+    return baseline_delta < 0
+
+
+def _attach_derived(data: dict, widget_instance: dict, entry: dict, compare_to: str, sparkline: str) -> None:
+    """Add now/baseline_delta/better/series to an already-annotated data dict.
+
+    Reads from metric_points (a separate, uniform time series from the
+    per-widget-shaped snapshot history used elsewhere in this module) so it
+    covers every catalog field, including nested rollup scalars, uniformly.
+    Silently leaves these keys as None when the metric has no metric_points
+    yet (e.g. before the first extractor run, or a composite field with no
+    single scalar) — this is additive to the existing data contract, not a
+    replacement.
+    """
+    source_id = widget_instance["source_instance"]
+    metric_key = _metric_key(entry)
+    now = datetime.now(UTC)
+    now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    now_point = get_metric_latest_at_or_before(source_id, metric_key, now_iso)
+    data["now"] = now_point["value"] if now_point else None
+
+    baseline_cutoff_iso = baseline_cutoff(compare_to, now).strftime("%Y-%m-%dT%H:%M:%SZ")
+    baseline_point = get_metric_latest_at_or_before(source_id, metric_key, baseline_cutoff_iso)
+    if now_point is not None and baseline_point is not None:
+        data["baseline_delta"] = round(now_point["value"] - baseline_point["value"], 2)
+    else:
+        data["baseline_delta"] = None
+
+    data["better"] = _better(data["baseline_delta"], entry["direction"])
+
+    sparkline_delta = SPARKLINE_WINDOWS.get(sparkline, SPARKLINE_WINDOWS[DEFAULT_SPARKLINE])
+    since_iso = (now - sparkline_delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+    series = get_metric_series(source_id, metric_key, since_iso)
+    data["series"] = downsample_series(series, max_points=MAX_SERIES_POINTS)
+
+
+def downsample_series(points: list[dict], max_points: int = MAX_SERIES_POINTS) -> list[dict]:
+    """Downsample a metric_points-shaped series ({"ts", "value"} dicts) to at
+    most max_points, via the same bucket-averaging as _downsample. Shared by
+    annotate()'s per-widget "series" and the domain scorecard's sparklines."""
+    tuples = [(p["ts"], p["value"]) for p in points]
+    return [{"ts": ts, "value": value} for ts, value in _downsample(tuples, max_points=max_points)]
 
 
 def _empty_bar(widget_type: str) -> dict:
@@ -731,7 +851,14 @@ def _current_summary(data: dict | None) -> str | None:
     return f"Current: {value}"
 
 
-def annotate(widget: dict, *, with_data: bool, range_key: str = DEFAULT_RANGE) -> dict:
+def annotate(
+    widget: dict,
+    *,
+    with_data: bool,
+    range_key: str = DEFAULT_RANGE,
+    compare_to: str = DEFAULT_COMPARE_TO,
+    sparkline: str = DEFAULT_SPARKLINE,
+) -> dict:
     entry = WIDGET_CATALOG[widget["type"]]
     annotated = {
         **widget,
@@ -742,4 +869,6 @@ def annotate(widget: dict, *, with_data: bool, range_key: str = DEFAULT_RANGE) -
     if with_data:
         annotated["data"] = get_widget_series(widget, range_key)
         annotated["current_summary"] = _current_summary(annotated["data"])
+        if annotated["data"] is not None:
+            _attach_derived(annotated["data"], widget, entry, compare_to, sparkline)
     return annotated
