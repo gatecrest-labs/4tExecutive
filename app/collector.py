@@ -9,11 +9,20 @@ import psutil
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.domains import DOMAINS, compute_domain, store_domain_scores
+from app.events import (
+    capture_rag_snapshot,
+    detect_and_record,
+    record_source_failed,
+    record_source_recovered,
+)
+from app.metric_extract import apply_retention, extract_all
 from app.metrics_db import (
     clear_poll_error,
     get_last_polled,
     get_latest,
     get_poll_error,
+    insert_metric_points,
     set_last_polled,
     set_poll_error,
     write_snapshot,
@@ -42,18 +51,67 @@ def _mark_polled(source_id: str, attempted_at: str) -> None:
         logger.exception("Failed to record last_polled for source %s", source_id)
 
 
-def _fail(source_id: str, attempted_at: str, error: str) -> bool:
-    logger.warning("Poll failed for source %s: %s", source_id, error)
-    _mark_polled(source_id, attempted_at)
+def _write_metric_points(source_id: str, payload: dict, collected_at: str) -> None:
+    """Derive and store metric_points for a snapshot, best-effort.
+
+    An extractor bug must never break polling — same swallow-and-log
+    convention as _mark_polled.
+    """
     try:
-        set_poll_error(source_id, error, attempted_at)
+        insert_metric_points(source_id, collected_at, extract_all(payload))
     except Exception:
-        logger.exception("Failed to record poll error for source %s", source_id)
+        logger.exception("Failed to extract metric points for source %s", source_id)
+
+
+def _fail(source: dict, attempted_at: str, error: str, had_error: bool) -> bool:
+    logger.warning("Poll failed for source %s: %s", source["id"], error)
+    _mark_polled(source["id"], attempted_at)
+    try:
+        set_poll_error(source["id"], error, attempted_at)
+        if not had_error:
+            record_source_failed(source, error)
+    except Exception:
+        logger.exception("Failed to record poll error for source %s", source["id"])
     return False
+
+
+def _domains_for_system(system: str) -> list[str]:
+    return [name for name, spec in DOMAINS.items() if spec["system"] == system]
+
+
+def _capture_domain_scores(system: str) -> dict:
+    return {name: compute_domain(name)["score"] for name in _domains_for_system(system)}
+
+
+def _record_change_events(source: dict, before_rag: dict, before_payload: dict | None, before_domain_scores: dict, after_payload: dict) -> None:
+    """Compare the just-written poll against the state captured before it and
+    record whatever changed. Best-effort — a detector bug must never affect
+    polling, same convention as _write_metric_points."""
+    try:
+        after_rag = capture_rag_snapshot(source["id"], source["system"])
+        after_domain_scores = _capture_domain_scores(source["system"])
+        detect_and_record(
+            source=source,
+            before_rag=before_rag,
+            after_rag=after_rag,
+            before_payload=before_payload,
+            after_payload=after_payload,
+            before_domain_scores=before_domain_scores,
+            after_domain_scores=after_domain_scores,
+        )
+    except Exception:
+        logger.exception("Failed to detect change events for source %s", source["id"])
 
 
 def poll_source(source: dict) -> bool:
     attempted_at = _now_iso()
+    had_error = get_poll_error(source["id"]) is not None
+    # Captured before the poll writes anything, so "before" reflects the
+    # prior snapshot/metric_points state, not this poll's own data.
+    before_rag = capture_rag_snapshot(source["id"], source["system"])
+    before_latest = get_latest(source["id"], "summary")
+    before_payload = before_latest["value"] if before_latest else None
+    before_domain_scores = _capture_domain_scores(source["system"])
     try:
         url = f"{source['base_url']}/external/api/executive/summary"
         response = requests.get(
@@ -65,18 +123,26 @@ def poll_source(source: dict) -> bool:
             verify=source.get("verify_tls", True),
         )
         if response.status_code != 200:
-            return _fail(source["id"], attempted_at, f"HTTP {response.status_code}")
+            return _fail(source, attempted_at, f"HTTP {response.status_code}", had_error)
 
-        write_snapshot(source["id"], "summary", response.json(), attempted_at)
+        payload = response.json()
+        write_snapshot(source["id"], "summary", payload, attempted_at)
+        _write_metric_points(source["id"], payload, attempted_at)
         set_last_polled(source["id"], attempted_at)
         try:
             clear_poll_error(source["id"])
+            if had_error:
+                record_source_recovered(source)
         except Exception:
             logger.exception("Failed to clear poll error for source %s", source["id"])
+        # No prior snapshot to compare against on a source's first-ever poll
+        # — every RAG state would spuriously read as "changed from nothing".
+        if before_payload is not None:
+            _record_change_events(source, before_rag, before_payload, before_domain_scores, payload)
     except requests.RequestException as exc:
-        return _fail(source["id"], attempted_at, str(exc) or type(exc).__name__)
+        return _fail(source, attempted_at, str(exc) or type(exc).__name__, had_error)
     except Exception as exc:
-        return _fail(source["id"], attempted_at, str(exc) or type(exc).__name__)
+        return _fail(source, attempted_at, str(exc) or type(exc).__name__, had_error)
 
     return True
 
@@ -86,16 +152,14 @@ def poll_self() -> None:
     "_self" source — never registered in sources.json/Admin, always present.
     Unlike poll_source, there's no network call and nothing to fail against,
     so no poll_errors/last_polled bookkeeping is needed here."""
-    write_snapshot(
-        "_self",
-        "summary",
-        {
-            "cpu_percent": psutil.cpu_percent(),
-            "memory_percent": psutil.virtual_memory().percent,
-            "disk_percent": psutil.disk_usage("/").percent,
-        },
-        _now_iso(),
-    )
+    attempted_at = _now_iso()
+    payload = {
+        "cpu_percent": psutil.cpu_percent(),
+        "memory_percent": psutil.virtual_memory().percent,
+        "disk_percent": psutil.disk_usage("/").percent,
+    }
+    write_snapshot("_self", "summary", payload, attempted_at)
+    _write_metric_points("_self", payload, attempted_at)
 
 
 def poll_status(source_id: str) -> dict:
@@ -147,9 +211,25 @@ def poll_now(source_id: str) -> bool:
     return poll_source(source)
 
 
+def _run_retention() -> None:
+    try:
+        apply_retention()
+    except Exception:
+        logger.exception("Failed to apply metrics retention")
+
+
+def _run_domain_scores() -> None:
+    try:
+        store_domain_scores()
+    except Exception:
+        logger.exception("Failed to compute domain scores")
+
+
 def init_scheduler(app) -> None:
     scheduler = BackgroundScheduler()
     scheduler.add_job(poll_all, "interval", minutes=1, id="poll_all")
     scheduler.add_job(poll_self, "interval", minutes=1, id="poll_self")
+    scheduler.add_job(_run_retention, "interval", hours=24, id="metrics_retention")
+    scheduler.add_job(_run_domain_scores, "interval", minutes=5, id="domain_scores")
     scheduler.start()
     app.extensions["scheduler"] = scheduler

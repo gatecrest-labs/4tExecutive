@@ -51,6 +51,31 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS metric_points (
+                source_id TEXT NOT NULL,
+                metric_key TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                value REAL NOT NULL,
+                PRIMARY KEY (source_id, metric_key, ts)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                source_id TEXT,
+                metric_key TEXT,
+                kind TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                title TEXT NOT NULL,
+                detail TEXT NOT NULL
+            )
+            """
+        )
 
 
 def write_snapshot(source_id: str, metric_type: str, value: dict, collected_at: str) -> None:
@@ -141,3 +166,134 @@ def save_layout(username: str, widgets: list[dict]) -> None:
             "ON CONFLICT(username) DO UPDATE SET widgets_json = excluded.widgets_json",
             (username, json.dumps(widgets)),
         )
+
+
+def insert_metric_points(source_id: str, ts: str, points: dict[str, float | None]) -> None:
+    """Upsert one derived metric point per (source_id, metric_key) at ts.
+
+    None values are skipped (an extractor reporting "not applicable" for this
+    payload shouldn't create a fabricated 0/null row). Re-inserting the same
+    (source_id, metric_key, ts) replaces the prior value, so backfill is safe
+    to re-run.
+    """
+    rows = [(source_id, key, ts, value) for key, value in points.items() if value is not None]
+    if not rows:
+        return
+    with _connect() as conn:
+        conn.executemany(
+            "INSERT INTO metric_points (source_id, metric_key, ts, value) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(source_id, metric_key, ts) DO UPDATE SET value = excluded.value",
+            rows,
+        )
+
+
+def iter_all_snapshots() -> list[dict]:
+    """Every stored snapshot, oldest first, for one-time backfills."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT source_id, value_json, collected_at FROM snapshots ORDER BY collected_at ASC"
+        ).fetchall()
+    return [{"source_id": s, "value": json.loads(v), "collected_at": c} for s, v, c in rows]
+
+
+def get_metric_series(source_id: str, metric_key: str, since: str) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT ts, value FROM metric_points "
+            "WHERE source_id = ? AND metric_key = ? AND ts >= ? "
+            "ORDER BY ts ASC",
+            (source_id, metric_key, since),
+        ).fetchall()
+    return [{"ts": ts, "value": value} for ts, value in rows]
+
+
+def get_metric_latest_at_or_before(source_id: str, metric_key: str, before: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT ts, value FROM metric_points "
+            "WHERE source_id = ? AND metric_key = ? AND ts <= ? "
+            "ORDER BY ts DESC LIMIT 1",
+            (source_id, metric_key, before),
+        ).fetchone()
+    return {"ts": row[0], "value": row[1]} if row else None
+
+
+def prune_snapshots_older_than(cutoff_iso: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM snapshots WHERE collected_at < ?", (cutoff_iso,))
+
+
+def prune_metric_points_older_than(cutoff_iso: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM metric_points WHERE ts < ?", (cutoff_iso,))
+
+
+def downsample_metric_points(cutoff_iso: str) -> None:
+    """Collapse metric_points older than cutoff_iso to one mean point per calendar day.
+
+    Groups by (source_id, metric_key, day) using the ts's date portion (ts is
+    always UTC ISO-8601, so a string prefix is a safe day key). A group with
+    only one point already is left untouched by the replace (same ts, same
+    value). Runs as a single INSERT...SELECT + DELETE pass rather than
+    row-by-row to keep the daily retention job cheap.
+    """
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TEMP TABLE _daily AS
+            SELECT source_id, metric_key, substr(ts, 1, 10) || 'T00:00:00Z' AS day_ts,
+                   AVG(value) AS avg_value
+            FROM metric_points
+            WHERE ts < ?
+            GROUP BY source_id, metric_key, substr(ts, 1, 10)
+            """,
+            (cutoff_iso,),
+        )
+        conn.execute("DELETE FROM metric_points WHERE ts < ?", (cutoff_iso,))
+        conn.execute(
+            "INSERT INTO metric_points (source_id, metric_key, ts, value) "
+            "SELECT source_id, metric_key, day_ts, avg_value FROM _daily WHERE 1=1 "
+            "ON CONFLICT(source_id, metric_key, ts) DO UPDATE SET value = excluded.value"
+        )
+        conn.execute("DROP TABLE _daily")
+
+
+def insert_event(
+    *,
+    ts: str,
+    source_id: str | None,
+    metric_key: str | None,
+    kind: str,
+    severity: str,
+    title: str,
+    detail: dict,
+) -> int:
+    with _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO events (ts, source_id, metric_key, kind, severity, title, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ts, source_id, metric_key, kind, severity, title, json.dumps(detail)),
+        )
+        return cursor.lastrowid
+
+
+def get_events(since: str) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, ts, source_id, metric_key, kind, severity, title, detail "
+            "FROM events WHERE ts >= ? ORDER BY ts DESC, id DESC",
+            (since,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "ts": row[1],
+            "source_id": row[2],
+            "metric_key": row[3],
+            "kind": row[4],
+            "severity": row[5],
+            "title": row[6],
+            "detail": json.loads(row[7]),
+        }
+        for row in rows
+    ]

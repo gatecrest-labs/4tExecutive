@@ -6,8 +6,10 @@ import pytest
 
 import app.sources as sources_module
 from app import metrics_db
-from app.metrics_db import init_db, write_snapshot
+from app.metrics_db import init_db, insert_metric_points, write_snapshot
 from app.widgets import (
+    BASELINES,
+    SPARKLINE_WINDOWS,
     WIDGET_CATALOG,
     _current_summary,
     _downsample,
@@ -1257,3 +1259,92 @@ def test_annotate_with_data_includes_description_and_current_summary():
 
     assert annotated["description"] == WIDGET_CATALOG["4thealth.rule_count_total"]["description"]
     assert annotated["current_summary"] == "Current: 42"
+
+
+def test_every_catalog_entry_has_a_direction():
+    for widget_type, entry in WIDGET_CATALOG.items():
+        assert entry["direction"] in ("higher", "lower", "none"), widget_type
+
+
+def test_baselines_and_sparkline_windows_are_defined():
+    assert set(BASELINES) == {"yesterday", "7d", "30d", "quarter_start"}
+    assert set(SPARKLINE_WINDOWS) == {"30d", "90d", "1y"}
+
+
+def test_annotate_attaches_now_and_baseline_delta_and_better():
+    insert_metric_points("s1", _iso(60 * 25), {"hygiene_score": 85.0})  # ~yesterday
+    insert_metric_points("s1", _iso(5), {"hygiene_score": 92.0})
+    write_snapshot("s1", "summary", {"hygiene_score": 92}, _iso(5))
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, compare_to="yesterday", sparkline="30d")
+
+    assert annotated["data"]["now"] == 92.0
+    assert annotated["data"]["baseline_delta"] == 7.0
+    assert annotated["data"]["better"] is True
+
+
+def test_annotate_better_is_false_when_direction_lower_and_value_increased():
+    insert_metric_points("s1", _iso(60 * 25), {"pending_config_diff_count": 2.0})
+    insert_metric_points("s1", _iso(5), {"pending_config_diff_count": 9.0})
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 9}, _iso(5))
+    widget = {"type": "4thealth.pending_config_diffs", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, compare_to="yesterday", sparkline="30d")
+
+    assert annotated["data"]["baseline_delta"] == 7.0
+    assert annotated["data"]["better"] is False
+
+
+def test_annotate_better_is_none_when_direction_is_none():
+    insert_metric_points("s1", _iso(60 * 25), {"rule_count_total": 40.0})
+    insert_metric_points("s1", _iso(5), {"rule_count_total": 45.0})
+    write_snapshot("s1", "summary", {"rule_count_total": 45}, _iso(5))
+    widget = {"type": "4thealth.rule_count_total", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, compare_to="yesterday", sparkline="30d")
+
+    assert annotated["data"]["baseline_delta"] == 5.0
+    assert annotated["data"]["better"] is None
+
+
+def test_annotate_now_and_baseline_delta_are_none_without_metric_points():
+    write_snapshot("s1", "summary", {"hygiene_score": 92}, _iso(5))
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True)
+
+    assert annotated["data"]["now"] is None
+    assert annotated["data"]["baseline_delta"] is None
+    assert annotated["data"]["better"] is None
+
+
+def test_annotate_attaches_downsampled_series():
+    for minutes_ago in range(200, 0, -10):
+        insert_metric_points("s1", _iso(minutes_ago), {"hygiene_score": 90.0})
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, _iso(1))
+    widget = {"type": "4thealth.hygiene_score", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, sparkline="30d")
+
+    series = annotated["data"]["series"]
+    assert len(series) <= 120
+    assert all(set(p) == {"ts", "value"} for p in series)
+
+
+def test_annotate_baseline_delta_uses_metric_key_override_for_derived_widgets():
+    insert_metric_points("s1", _iso(60 * 25), {"fleet_availability_pct": 70.0})
+    insert_metric_points("s1", _iso(5), {"fleet_availability_pct": 90.0})
+    write_snapshot(
+        "s1",
+        "summary",
+        {"firewall_online_count": 9, "firewall_managed_count": 10},
+        _iso(5),
+    )
+    widget = {"type": "4thealth.fleet_availability", "source_instance": "s1", "size": "1x1"}
+
+    annotated = annotate(widget, with_data=True, compare_to="yesterday")
+
+    assert annotated["data"]["now"] == 90.0
+    assert annotated["data"]["baseline_delta"] == 20.0
+    assert annotated["data"]["better"] is True

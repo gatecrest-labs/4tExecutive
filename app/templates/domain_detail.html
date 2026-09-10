@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_charts.html" as charts %}
+{% block content %}
+<div class="domain-detail-header">
+  <a class="domain-detail-back" href="{{ url_for('scorecard.index') }}">&larr; Scorecard</a>
+  <h1>{{ domain.label }}</h1>
+  {% if domain.score is not none %}
+  <div class="domain-detail-grade rag-{{ domain.rag }}">
+    <span class="scorecard-grade">{{ domain.grade }}</span>
+    <span class="domain-detail-score">{{ domain.score }}/100</span>
+  </div>
+  {% else %}
+  <p class="scorecard-not-measured">not yet measured</p>
+  {% endif %}
+</div>
+
+{% if domain.score is not none %}
+<div class="domain-detail-window-toggle">
+  {% for w in windows %}
+  <a class="{% if w == window %}active{% endif %}" href="{{ url_for('scorecard.detail', name=domain.name, window=w) }}">{{ w }}</a>
+  {% endfor %}
+</div>
+
+{{ charts.domain_score_chart(series, domain.target, ticks) }}
+
+<h2>Member metrics</h2>
+<table class="widget-table domain-member-table">
+  <thead>
+    <tr><th>Metric</th><th>Now</th><th>Δ 7d</th><th>RAG</th></tr>
+  </thead>
+  <tbody>
+  {% for row in members %}
+    <tr>
+      <td>{{ row.label }}</td>
+      <td>{{ row.now if row.now is not none else '—' }}</td>
+      <td>
+        {% if row.delta is not none %}
+          {% if row.delta > 0 %}▲ +{{ row.delta }}{% elif row.delta < 0 %}▼ {{ row.delta }}{% else %}— no change{% endif %}
+        {% else %}—{% endif %}
+      </td>
+      <td>{% if row.rag %}<span class="rag-dot rag-{{ row.rag }}"></span>{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>How this score is computed</h2>
+<p class="domain-detail-explanation">{{ domain.explanation }}</p>
+{% endif %}
+{% endblock %}

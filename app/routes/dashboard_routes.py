@@ -1,90 +1,130 @@
-"""Dashboard routes: personalized view and edit modes."""
+"""Dashboard routes: the Trend Board and the (currently unused-by-any-page)
+saved-layout edit/save endpoints."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from flask import Blueprint, jsonify, make_response, render_template, request, session
+from flask import Blueprint, Response, jsonify, make_response, render_template, request, session
 
+from app.board import DOMAIN_ORDER, build_rows, rows_to_csv
 from app.decorators import tab_required
+from app.domains import DOMAINS
+from app.events import positioned_ticks
 from app.layouts import get_layout, save_layout
-from app.sources import get_source
-from app.widgets import DEFAULT_RANGE, RANGES, WIDGET_CATALOG, annotate, default_layout, group_by_system
+from app.metrics_db import get_events
+from app.sources import list_sources
+from app.widgets import (
+    BASELINES,
+    DEFAULT_COMPARE_TO,
+    DEFAULT_SPARKLINE,
+    SPARKLINE_WINDOWS,
+    WIDGET_CATALOG,
+    annotate,
+    default_layout,
+    group_by_system,
+)
 
 bp = Blueprint("dashboard", __name__)
 
-
-def _resolve_range() -> str:
-    range_key = request.args.get("range") or request.cookies.get("range") or DEFAULT_RANGE
-    return range_key if range_key in RANGES else DEFAULT_RANGE
+SORT_KEYS = ("status", "delta", "name")
+DEFAULT_SORT = "status"
 
 
-def _posture(widgets: list[dict]) -> dict | None:
-    """Aggregate already-computed per-widget RAG state and freshness into one summary row.
+def _resolve_compare_to() -> str:
+    compare_to = request.cookies.get("compare_to") or DEFAULT_COMPARE_TO
+    return compare_to if compare_to in BASELINES else DEFAULT_COMPARE_TO
 
-    No new queries — reads widget["data"]["rag"] / ["collected_at"] from the
-    already-annotated widget list. Returns None when no widget in the layout
-    carries a RAG state (nothing to summarize).
+
+def _resolve_sparkline() -> str:
+    """Resolve the sparkline window: a `?range=` value that happens to also be
+    a valid sparkline window (30d/90d/1y) is an alias for it (see the
+    metric-points design), otherwise falls back to the sparkline cookie, then
+    the default.
     """
-    rag_widgets = [(i, w) for i, w in enumerate(widgets, start=1) if w.get("data") and w["data"].get("rag")]
-    if not rag_widgets:
-        return None
+    query_range = request.args.get("range")
+    if query_range in SPARKLINE_WINDOWS:
+        return query_range
+    sparkline = request.cookies.get("sparkline") or DEFAULT_SPARKLINE
+    return sparkline if sparkline in SPARKLINE_WINDOWS else DEFAULT_SPARKLINE
 
-    reds = [i for i, w in rag_widgets if w["data"]["rag"] == "red"]
-    ambers = [i for i, w in rag_widgets if w["data"]["rag"] == "amber"]
-    overall = "Critical" if reds else "Attention" if ambers else "OK"
-    first_offender_index = reds[0] if reds else (ambers[0] if ambers else None)
 
-    timestamps = [w["data"]["collected_at"] for w in widgets if w.get("data") and w["data"].get("collected_at")]
-    oldest_minutes_ago = None
-    stale = False
-    if timestamps:
-        oldest = min(timestamps)
-        oldest_dt = datetime.fromisoformat(oldest)
-        oldest_minutes_ago = round((datetime.now(UTC) - oldest_dt).total_seconds() / 60)
-        longest_interval = max(
-            (get_source(w["source_instance"]) or {}).get("poll_interval_minutes", 15) for w in widgets
-        )
-        stale = oldest_minutes_ago > 2 * longest_interval
+def _resolve_domain_filter() -> str | None:
+    domain_filter = request.args.get("domain") or request.cookies.get("domain_filter")
+    return domain_filter if domain_filter in DOMAIN_ORDER else None
 
+
+def _resolve_source_filter() -> str | None:
+    valid_ids = {s["id"] for s in list_sources()}
+    source_filter = request.args.get("source") or request.cookies.get("source_filter")
+    return source_filter if source_filter in valid_ids else None
+
+
+def _resolve_sort() -> str:
+    sort = request.args.get("sort", DEFAULT_SORT)
+    return sort if sort in SORT_KEYS else DEFAULT_SORT
+
+
+def _board_context():
+    compare_to = _resolve_compare_to()
+    sparkline = _resolve_sparkline()
+    domain_filter = _resolve_domain_filter()
+    source_filter = _resolve_source_filter()
+    sort = _resolve_sort()
+    rows = build_rows(
+        compare_to=compare_to,
+        sparkline=sparkline,
+        domain_filter=domain_filter,
+        source_filter=source_filter,
+        sort=sort,
+    )
+    since = (datetime.now(UTC) - SPARKLINE_WINDOWS[sparkline]).strftime("%Y-%m-%dT%H:%M:%SZ")
+    events = get_events(since=since)
+    for row in rows:
+        row_events = [e for e in events if e["source_id"] == row["source_instance"] and e["metric_key"] == row["metric_key"]]
+        row["ticks"] = positioned_ticks(row["series"], row_events, width=240)
     return {
-        "overall": overall,
-        "critical_count": len(reds),
-        "attention_count": len(ambers),
-        "oldest_minutes_ago": oldest_minutes_ago,
-        "stale": stale,
-        "first_offender_index": first_offender_index,
+        "rows": rows,
+        "compare_to": compare_to,
+        "sparkline": sparkline,
+        "domain_filter": domain_filter,
+        "source_filter": source_filter,
+        "sort": sort,
     }
 
 
-@bp.route("/")
+def _set_board_cookies(response) -> None:
+    if request.args.get("range") and request.args["range"] in SPARKLINE_WINDOWS:
+        response.set_cookie("sparkline", request.args["range"], max_age=60 * 60 * 24 * 365, samesite="Lax")
+    if request.args.get("domain"):
+        response.set_cookie("domain_filter", request.args["domain"], max_age=60 * 60 * 24 * 365, samesite="Lax")
+    if request.args.get("source"):
+        response.set_cookie("source_filter", request.args["source"], max_age=60 * 60 * 24 * 365, samesite="Lax")
+
+
+@bp.route("/board")
 @tab_required("dashboard")
 def index():
-    # Falls back to one widget per catalog entry x enabled matching source
-    # when the user hasn't saved a custom layout, so the dashboard shows
-    # everything currently configured instead of being blank by default —
-    # see app/widgets.py:default_layout.
-    range_key = _resolve_range()
-    layout = get_layout(session["username"]) or default_layout()
-    widgets = [annotate(widget, with_data=True, range_key=range_key) for widget in layout]
-    # Stamp each widget's original position before grouping into sections, so
-    # the posture strip's "jump to offender" link (#widget-N) still resolves
-    # once widgets are nested inside per-system section grids.
-    for i, widget in enumerate(widgets, start=1):
-        widget["index"] = i
-    posture = _posture(widgets)
+    context = _board_context()
+    domains = [{"name": name, "label": DOMAINS[name]["label"]} for name in DOMAIN_ORDER]
     response = make_response(
         render_template(
-            "dashboard.html",
-            sections=group_by_system(widgets),
-            edit_mode=False,
-            catalog=None,
-            range_key=range_key,
-            posture=posture,
+            "board.html",
+            **context,
+            domains=domains,
+            sources=list_sources(),
         )
     )
-    if request.args.get("range"):
-        response.set_cookie("range", range_key, max_age=60 * 60 * 24 * 365, samesite="Lax")
+    _set_board_cookies(response)
+    return response
+
+
+@bp.route("/board.csv")
+@tab_required("dashboard")
+def board_csv():
+    context = _board_context()
+    response = Response(rows_to_csv(context["rows"]), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=trend-board.csv"
     return response
 
 
