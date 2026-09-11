@@ -7,7 +7,13 @@ from datetime import UTC, datetime, timedelta
 from flask import Blueprint, abort, jsonify, make_response, render_template, request
 
 from app.decorators import tab_required
-from app.domains import DOMAINS, compute_domain, compute_overall, domain_member_table, get_infra_devices
+from app.domains import (
+    DOMAINS,
+    compute_domain,
+    compute_overall,
+    domain_member_table,
+    get_infra_devices,
+)
 from app.events import event_domain, positioned_ticks
 from app.metrics_db import get_events, get_metric_series, list_by_adom_names
 from app.widgets import downsample_series
