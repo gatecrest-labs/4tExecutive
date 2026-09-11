@@ -14,6 +14,7 @@ import io
 from datetime import UTC, datetime
 
 from app.domains import DOMAINS
+from app.metric_extract import by_adom_metric_key
 from app.metrics_db import get_metric_latest_at_or_before
 from app.thresholds import get_thresholds
 from app.widgets import WIDGET_CATALOG, annotate, baseline_cutoff, default_layout, source_name
@@ -33,6 +34,8 @@ WIDGET_DOMAIN: dict[str, str] = {
     "4thealth.pending_config_diffs": "availability",
     "4thealth.last_backup_status": "availability",
     "4thealth.adom_count": "availability",
+    "4thealth.devices_out_of_sync": "availability",
+    "4thealth.admin_changes_24h": "availability",
     "4thealth.hygiene_score": "posture",
     "4thealth.version_compliance": "posture",
     "4thealth.device_review_posture": "posture",
@@ -86,18 +89,23 @@ def _delta_and_better_vs(source_id: str, metric_key: str, direction: str, now_va
     return delta, better
 
 
-def _build_row(widget: dict, *, compare_to: str, sparkline: str, now_dt: datetime) -> dict:
+def _build_row(
+    widget: dict, *, compare_to: str, sparkline: str, now_dt: datetime, adom: str | None = None
+) -> dict:
     widget_type = widget["type"]
     entry = WIDGET_CATALOG[widget_type]
     metric_key = entry.get("metric_key", entry["field"])
-    annotated = annotate(widget, with_data=True, compare_to=compare_to, sparkline=sparkline)
+    effective_metric_key = metric_key
+    if adom:
+        effective_metric_key = by_adom_metric_key(metric_key, adom) or metric_key
+    annotated = annotate(widget, with_data=True, compare_to=compare_to, sparkline=sparkline, adom=adom)
     data = annotated.get("data") or {}
     thresholds = get_thresholds(widget_type, entry.get("rag"))
     now_value = data.get("now")
 
     target, progress = _target_and_progress(entry, thresholds, now_value)
     delta_30d, better_30d = _delta_and_better_vs(
-        widget["source_instance"], metric_key, entry["direction"], now_value, "30d", now_dt
+        widget["source_instance"], effective_metric_key, entry["direction"], now_value, "30d", now_dt
     )
 
     status = data.get("rag")
@@ -127,6 +135,7 @@ def _build_row(widget: dict, *, compare_to: str, sparkline: str, now_dt: datetim
         "status": status,
         "stale": bool(data.get("stale")),
         "collected_at": data.get("collected_at"),
+        "adom_scoped": bool(adom) and effective_metric_key != metric_key,
     }
 
 
@@ -146,10 +155,11 @@ def build_rows(
     source_filter: str | None = None,
     sort: str = "status",
     now: datetime | None = None,
+    adom: str | None = None,
 ) -> list[dict]:
     now_dt = now or datetime.now(UTC)
     rows = [
-        _build_row(widget, compare_to=compare_to, sparkline=sparkline, now_dt=now_dt)
+        _build_row(widget, compare_to=compare_to, sparkline=sparkline, now_dt=now_dt, adom=adom)
         for widget in default_layout()
         if widget["type"] in WIDGET_DOMAIN
     ]

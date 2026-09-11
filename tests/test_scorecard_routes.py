@@ -78,6 +78,78 @@ def test_scorecard_renders_domain_cards_with_data(client, tmp_path, monkeypatch)
     assert b"95" in response.data
 
 
+def test_scorecard_adom_filter_sets_cookie_and_scopes_score(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    add_source(id="s1", system="4thealth", name="East", base_url="https://example.internal", token="secret")
+    insert_metric_points("s1", _iso(5), {
+        "firewall_online_count": 100.0,
+        "firewall_managed_count": 100.0,
+        "by_adom.Corp.firewall_online_count": 5.0,
+        "by_adom.Corp.firewalls_total": 10.0,
+    })
+
+    response = client.get("/?adom=Corp")
+
+    assert response.status_code == 200
+    assert b"Corp" in response.data
+    set_cookies = "; ".join(response.headers.getlist("Set-Cookie"))
+    assert "adom_filter=Corp" in set_cookies
+
+
+def test_scorecard_adom_filter_unknown_ignored(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/?adom=NoSuchADOM")
+
+    assert response.status_code == 200
+
+
+def test_domain_detail_adom_filter_marks_scoped_member_row(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    add_source(id="s1", system="4thealth", name="East", base_url="https://example.internal", token="secret")
+    insert_metric_points("s1", _iso(5), {
+        "firewall_online_count": 100.0,
+        "firewall_managed_count": 100.0,
+        "by_adom.Corp.firewall_online_count": 5.0,
+        "by_adom.Corp.firewalls_total": 10.0,
+    })
+
+    response = client.get("/domain/availability?adom=Corp")
+
+    assert response.status_code == 200
+    assert b"Corp" in response.data
+
+
+def test_domain_detail_availability_shows_infrastructure_card(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    add_source(id="s1", system="4thealth", name="East", base_url="https://example.internal", token="secret")
+    from app.metrics_db import write_snapshot
+
+    write_snapshot("s1", "summary", {"infra": [
+        {"role": "fortimanager", "label": "FMG-01", "hostname": "fmg1.local", "status": "green"},
+    ]}, _iso(5))
+
+    response = client.get("/domain/availability")
+
+    assert response.status_code == 200
+    assert b"Infrastructure" in response.data
+    assert b"fmg1.local" in response.data
+
+
+def test_domain_detail_non_availability_has_no_infrastructure_card(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+
+    response = client.get("/domain/posture")
+
+    assert response.status_code == 200
+    assert b"Infrastructure" not in response.data
+
+
 def test_domain_detail_requires_dashboard_tab(client, tmp_path, monkeypatch):
     _login(client)
     groups_path = tmp_path / "groups.json"

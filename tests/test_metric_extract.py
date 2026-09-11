@@ -74,6 +74,134 @@ def test_extract_all_skips_composite_dict_fields_with_no_single_scalar():
     assert "version_breakdown" not in points
 
 
+def test_extract_all_covers_psirt_fields():
+    payload = {
+        "psirt": {
+            "open_advisories": 3,
+            "devices_critical": 5,
+            "devices_high": 2,
+            "devices_medium": 1,
+            "devices_critical_mitigated": 1.0,
+            "kev_exposed_devices": 2,
+            "mean_days_to_remediate_90d": 12.5,
+            "top_advisory": {"advisory_id": "FG-IR-24-001", "cvss": 9.8, "kev": True, "devices": 5},
+        }
+    }
+    points = extract_all(payload)
+    assert points["psirt.open_advisories"] == 3.0
+    assert points["psirt.devices_critical"] == 5.0
+    assert points["psirt.devices_high"] == 2.0
+    assert points["psirt.devices_medium"] == 1.0
+    assert points["psirt.devices_critical_mitigated"] == 1.0
+    assert points["psirt.kev_exposed_devices"] == 2.0
+    assert points["psirt.mean_days_to_remediate_90d"] == 12.5
+    assert "psirt" not in points
+    assert "psirt.top_advisory" not in points
+
+
+def test_extract_all_omits_psirt_keys_when_absent():
+    points = extract_all({"hygiene_score": 92})
+    assert "psirt.devices_critical" not in points
+    assert "psirt.kev_exposed_devices" not in points
+
+
+def test_extract_all_covers_change_control_fields():
+    payload = {
+        "change_control": {
+            "devices_out_of_sync": 4,
+            "admin_changes_24h": 12,
+            "admin_changes_by_user": [{"user": "alice", "count": 8}],
+            "collected_at": "2026-09-10T01:00:00Z",
+        }
+    }
+    points = extract_all(payload)
+    assert points["change_control.devices_out_of_sync"] == 4.0
+    assert points["change_control.admin_changes_24h"] == 12.0
+    assert "change_control" not in points
+    assert "change_control.admin_changes_by_user" not in points
+
+
+def test_extract_all_omits_change_control_keys_when_absent():
+    points = extract_all({"hygiene_score": 92})
+    assert "change_control.devices_out_of_sync" not in points
+    assert "change_control.admin_changes_24h" not in points
+
+
+def test_extract_all_covers_lifecycle_fields():
+    payload = {
+        "lifecycle": {
+            "devices_hw_eos": 3,
+            "devices_hw_eos_12m": 5,
+            "models_unknown": ["FortiGate-Unicorn"],
+            "collected_at": "2026-09-10T00:00:00Z",
+        }
+    }
+    points = extract_all(payload)
+    assert points["lifecycle.devices_hw_eos"] == 3.0
+    assert points["lifecycle.devices_hw_eos_12m"] == 5.0
+    assert "lifecycle" not in points
+    assert "lifecycle.models_unknown" not in points
+
+
+def test_extract_all_omits_lifecycle_keys_when_absent():
+    points = extract_all({"hygiene_score": 92})
+    assert "lifecycle.devices_hw_eos" not in points
+    assert "lifecycle.devices_hw_eos_12m" not in points
+
+
+def test_extract_all_computes_devices_on_eol_version():
+    payload = {
+        "version_breakdown": {
+            "v7.4.5": {"count": 10, "eol": False},
+            "v6.4.2": {"count": 3, "eol": True},
+            "v6.0.5": {"count": 2, "eol": True},
+        }
+    }
+    points = extract_all(payload)
+    assert points["devices_on_eol_version"] == 5.0
+
+
+def test_extract_all_devices_on_eol_version_none_when_no_breakdown():
+    assert "devices_on_eol_version" not in extract_all({"hygiene_score": 92})
+
+
+def test_extract_all_covers_by_adom_fields():
+    from app.metric_extract import by_adom_metric_key
+
+    payload = {
+        "by_adom": {
+            "Corp": {
+                "firewalls_total": 10,
+                "firewall_online_count": 9,
+                "version_compliance_pct": 90.0,
+                "pending_config_diff_count": 1,
+                "devices_with_failures": 2,
+            },
+            "Branch": {"firewalls_total": 3, "firewall_online_count": 3},
+        }
+    }
+    points = extract_all(payload)
+    assert points["by_adom.Corp.firewalls_total"] == 10.0
+    assert points["by_adom.Corp.devices_with_failures"] == 2.0
+    assert points["by_adom.Branch.firewall_online_count"] == 3.0
+    assert "by_adom.Branch.devices_with_failures" not in points
+    assert "by_adom" not in points
+
+    assert by_adom_metric_key("firewall_managed_count", "Corp") == "by_adom.Corp.firewalls_total"
+    assert by_adom_metric_key("firewall_online_count", "Corp") == "by_adom.Corp.firewall_online_count"
+    assert by_adom_metric_key("hygiene_score", "Corp") is None
+
+
+def test_extract_all_omits_by_adom_when_absent():
+    points = extract_all({"hygiene_score": 92})
+    assert not any(k.startswith("by_adom.") for k in points)
+
+
+def test_extract_all_devices_on_eol_version_zero_when_none_are_eol():
+    payload = {"version_breakdown": {"v7.4.5": {"count": 10, "eol": False}}}
+    assert extract_all(payload)["devices_on_eol_version"] == 0.0
+
+
 def test_backfill_walks_existing_snapshots_into_metric_points():
     write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-08-24T08:00:00Z")
     write_snapshot("s1", "summary", {"hygiene_score": 95}, "2026-08-24T09:00:00Z")

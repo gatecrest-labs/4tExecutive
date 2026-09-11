@@ -115,6 +115,47 @@ def test_board_source_filter_query_param_sets_cookie_and_filters(client, tmp_pat
     assert "source_filter=s1" in set_cookies
 
 
+def test_board_adom_filter_query_param_sets_cookie_and_scopes_value(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    _seed("s1", "4thealth")
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 100}, _iso(5))
+    insert_metric_points("s1", _iso(5), {
+        "pending_config_diff_count": 100.0,
+        "by_adom.Corp.pending_config_diff_count": 3.0,
+    })
+
+    response = client.get("/board?adom=Corp")
+
+    assert response.status_code == 200
+    assert b"Corp" in response.data
+    set_cookies = "; ".join(response.headers.getlist("Set-Cookie"))
+    assert "adom_filter=Corp" in set_cookies
+
+
+def test_board_adom_filter_unknown_adom_ignored(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    _seed("s1", "4thealth")
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 100}, _iso(5))
+    insert_metric_points("s1", _iso(5), {"pending_config_diff_count": 100.0})
+
+    response = client.get("/board?adom=NoSuchADOM")
+
+    assert response.status_code == 200  # falls back to fleet-wide, no error
+
+
+def test_board_adom_filter_all_clears_cookie(client, tmp_path, monkeypatch):
+    _login(client)
+    _allow_dashboard_tab(monkeypatch, tmp_path)
+    client.set_cookie("adom_filter", "Corp")
+
+    response = client.get("/board?adom=")
+
+    set_cookies = "; ".join(response.headers.getlist("Set-Cookie"))
+    assert "adom_filter=Corp" not in set_cookies
+
+
 def test_board_sort_query_param(client, tmp_path, monkeypatch):
     _login(client)
     _allow_dashboard_tab(monkeypatch, tmp_path)

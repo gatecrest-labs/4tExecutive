@@ -119,7 +119,13 @@ WIDGET_CATALOG: dict[str, dict] = {
         "rag": {"direction": "lower", "green": 0, "amber": 5},
     },
     "4thealth.last_backup_status": {
-        "label": "App Config Backup",
+        # Renamed from "App Config Backup" — this is 4thealth-plus's own
+        # application config backup, distinct from FortiGate device
+        # configuration backup age (a "device_backup" key belongs beside
+        # this one once that lands; see 4thealth-plus's
+        # docs/superpowers/specs/2026-09-10-device-backup-age-spike.md —
+        # its FMG revision-history endpoint isn't confirmed yet).
+        "label": "4thealth-plus App Config Backup",
         "description": "Result of the most recent 4thealth-plus application configuration backup.",
         "source_system": "4thealth",
         "metric_type": "summary",
@@ -216,6 +222,27 @@ WIDGET_CATALOG: dict[str, dict] = {
         "direction": "none",
         "default_size": "2x2",
         "chart_type": "line",
+    },
+    "4thealth.devices_out_of_sync": {
+        "label": "Devices Out of Sync",
+        "description": "Managed firewalls whose configuration cannot be confirmed to match FortiManager's database.",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "change_control",
+        "metric_key": "change_control.devices_out_of_sync",
+        "direction": "lower",
+        "default_size": "1x1",
+        "rag": {"direction": "lower", "green": 0, "amber": 3},
+    },
+    "4thealth.admin_changes_24h": {
+        "label": "Admin Changes (24h)",
+        "description": "FortiManager admin audit-log entries in the trailing 24 hours.",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "change_control",
+        "metric_key": "change_control.admin_changes_24h",
+        "direction": "none",
+        "default_size": "1x1",
     },
     "4thealth.rule_hygiene": {
         "label": "Rule Hygiene",
@@ -571,7 +598,14 @@ def _better(baseline_delta: float | None, direction: str) -> bool | None:
     return baseline_delta < 0
 
 
-def _attach_derived(data: dict, widget_instance: dict, entry: dict, compare_to: str, sparkline: str) -> None:
+def _attach_derived(
+    data: dict,
+    widget_instance: dict,
+    entry: dict,
+    compare_to: str,
+    sparkline: str,
+    adom: str | None = None,
+) -> None:
     """Add now/baseline_delta/better/series to an already-annotated data dict.
 
     Reads from metric_points (a separate, uniform time series from the
@@ -581,9 +615,19 @@ def _attach_derived(data: dict, widget_instance: dict, entry: dict, compare_to: 
     yet (e.g. before the first extractor run, or a composite field with no
     single scalar) — this is additive to the existing data contract, not a
     replacement.
+
+    When *adom* is set and this widget's metric has a per-ADOM breakdown
+    (app.metric_extract.BY_ADOM_FIELD_MAP), reads that ADOM's value instead
+    of the fleet-wide one — everything else (baseline delta, series) then
+    follows automatically since they all key off the same metric_key.
+    Metrics with no breakdown are unaffected by the filter.
     """
     source_id = widget_instance["source_instance"]
     metric_key = _metric_key(entry)
+    if adom:
+        from app.metric_extract import by_adom_metric_key
+
+        metric_key = by_adom_metric_key(metric_key, adom) or metric_key
     now = datetime.now(UTC)
     now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -858,6 +902,7 @@ def annotate(
     range_key: str = DEFAULT_RANGE,
     compare_to: str = DEFAULT_COMPARE_TO,
     sparkline: str = DEFAULT_SPARKLINE,
+    adom: str | None = None,
 ) -> dict:
     entry = WIDGET_CATALOG[widget["type"]]
     annotated = {
@@ -870,5 +915,5 @@ def annotate(
         annotated["data"] = get_widget_series(widget, range_key)
         annotated["current_summary"] = _current_summary(annotated["data"])
         if annotated["data"] is not None:
-            _attach_derived(annotated["data"], widget, entry, compare_to, sparkline)
+            _attach_derived(annotated["data"], widget, entry, compare_to, sparkline, adom=adom)
     return annotated

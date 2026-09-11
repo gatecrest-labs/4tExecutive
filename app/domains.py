@@ -2,9 +2,15 @@
 domains (availability, posture, vulnerability, hygiene, logging, lifecycle)
 for the scorecard landing page.
 
-Vulnerability and Lifecycle have no real 4tExecutive metrics yet (they land
-with PSIRT/hardware-EOS in a later wave) — they always score None and render
-"not yet measured".
+Vulnerability is sourced from 4thealth-plus's PSIRT fleet-exposure rollup
+(schema_version 2's "psirt" key — see that repo's docs/features.md).
+Lifecycle is sourced from the same repo's "lifecycle" key (hardware EOS,
+via app.model_eos) plus version_compliance_pct (firmware) and a derived
+devices_on_eol_version (software EOL, from version_breakdown's per-version
+"eol" flags) — device configuration backup age is NOT part of this domain
+yet; that data point's FMG revision-history endpoint could not be
+confirmed against the lab FMG (see 4thealth-plus's
+docs/superpowers/specs/2026-09-10-device-backup-age-spike.md).
 
 Aggregation reads metric_points exclusively (never raw snapshots), summed or
 averaged across every enabled source of a domain's source_system, so "now"
@@ -19,7 +25,8 @@ from datetime import UTC, datetime
 
 from app.atomic_io import atomic_write_json, read_json
 from app.config_paths import CONFIG_DIR
-from app.metrics_db import get_metric_latest_at_or_before, insert_metric_points
+from app.metric_extract import by_adom_metric_key
+from app.metrics_db import get_latest, get_metric_latest_at_or_before, insert_metric_points
 from app.sources import list_sources
 from app.thresholds import get_thresholds
 from app.widgets import WIDGET_CATALOG, baseline_cutoff, rag_state
@@ -30,12 +37,12 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 # name -> {label, system} — system is None for domains with no real metrics yet.
 DOMAINS: dict[str, dict] = {
-    "availability": {"label": "Availability", "system": "4thealth"},
+    "availability": {"label": "Availability & Change", "system": "4thealth"},
     "posture": {"label": "Config Posture", "system": "4thealth"},
-    "vulnerability": {"label": "Vulnerability", "system": None},
+    "vulnerability": {"label": "Vulnerability", "system": "4thealth"},
     "hygiene": {"label": "Policy Hygiene", "system": "4thealth"},
     "logging": {"label": "Logging & Visibility", "system": "4tlog"},
-    "lifecycle": {"label": "Lifecycle & Support", "system": None},
+    "lifecycle": {"label": "Lifecycle & Support", "system": "4thealth"},
 }
 
 # Member metrics shown on each domain's detail-page table, with the
@@ -46,13 +53,20 @@ MEMBER_METRICS: dict[str, list[dict]] = {
     "availability": [
         {"key": "firewall_online_count", "label": "Firewalls online"},
         {"key": "firewall_managed_count", "label": "Firewalls managed"},
+        {"key": "change_control.devices_out_of_sync", "label": "Devices out of sync"},
+        {"key": "change_control.admin_changes_24h", "label": "Admin changes (24h)"},
     ],
     "posture": [
         {"key": "hygiene_score", "label": "Hygiene score (fleet avg)"},
         {"key": "version_compliance_pct", "label": "Version compliance (fleet avg)"},
         {"key": "device_review.devices_with_failures", "label": "Devices with failures"},
     ],
-    "vulnerability": [],
+    "vulnerability": [
+        {"key": "psirt.devices_critical", "label": "Critical-exposure devices"},
+        {"key": "psirt.devices_high", "label": "High-exposure devices"},
+        {"key": "psirt.devices_medium", "label": "Medium-exposure devices"},
+        {"key": "psirt.kev_exposed_devices", "label": "KEV-listed exposure devices"},
+    ],
     "hygiene": [
         {"key": "rule_hygiene.rule_findings_total", "label": "Rule findings"},
         {"key": "rule_count_total", "label": "Total rules"},
@@ -61,7 +75,12 @@ MEMBER_METRICS: dict[str, list[dict]] = {
         {"key": "devices_silent", "label": "Silent devices"},
         {"key": "faz_disk_used_pct", "label": "FortiAnalyzer disk used % (worst)"},
     ],
-    "lifecycle": [],
+    "lifecycle": [
+        {"key": "version_compliance_pct", "label": "Firmware compliance (fleet avg)"},
+        {"key": "devices_on_eol_version", "label": "Devices on EOL FortiOS version"},
+        {"key": "lifecycle.devices_hw_eos", "label": "Devices with EOS hardware"},
+        {"key": "lifecycle.devices_hw_eos_12m", "label": "Devices reaching hardware EOS within 12mo"},
+    ],
 }
 
 DEFAULT_SCORING: dict = {
@@ -82,6 +101,15 @@ DEFAULT_SCORING: dict = {
             "failing_device_cap": 20,
             "target": 90,
         },
+        "vulnerability": {
+            "critical_penalty_per_device": 20,
+            "critical_cap": 60,
+            "high_penalty_per_device": 3,
+            "high_cap": 30,
+            "medium_penalty_per_device": 1,
+            "medium_cap": 10,
+            "target": 100,
+        },
         "hygiene": {
             "points_per_1000_findings": 0.5,
             "findings_cap": 40,
@@ -92,6 +120,12 @@ DEFAULT_SCORING: dict = {
             "silent_cap": 40,
             "disk_warn_threshold": 70,
             "disk_penalty_per_pct": 1,
+            "target": 90,
+        },
+        "lifecycle": {
+            "firmware_weight": 0.5,
+            "software_eol_weight": 0.25,
+            "hardware_eos_weight": 0.25,
             "target": 90,
         },
     },
@@ -188,24 +222,65 @@ def _fleet_weighted_avg(system: str, value_key: str, weight_key: str, ts_iso: st
     return sum(plain_values) / len(plain_values)
 
 
-def _domain_inputs(name: str, ts_iso: str) -> dict[str, float | None]:
+def _effective_key(metric_key: str, adom: str | None) -> str:
+    """metric_key itself when no ADOM filter is active, or when this
+    metric has no per-ADOM breakdown (app.metric_extract.BY_ADOM_FIELD_MAP)
+    — otherwise the by_adom-namespaced key for that ADOM. The returned
+    dict from _domain_inputs() always keeps the ORIGINAL metric_key as its
+    own dict key regardless, so callers (scorers, domain_member_table,
+    _metric_rag) never need to know this substitution happened."""
+    if not adom:
+        return metric_key
+    return by_adom_metric_key(metric_key, adom) or metric_key
+
+
+def _domain_inputs(name: str, ts_iso: str, adom: str | None = None) -> dict[str, float | None]:
     system = DOMAINS[name]["system"]
     if system is None:
         return {}
     if name == "availability":
         return {
-            "firewall_online_count": _fleet_sum(system, "firewall_online_count", ts_iso),
-            "firewall_managed_count": _fleet_sum(system, "firewall_managed_count", ts_iso),
+            "firewall_online_count": _fleet_sum(
+                system, _effective_key("firewall_online_count", adom), ts_iso
+            ),
+            "firewall_managed_count": _fleet_sum(
+                system, _effective_key("firewall_managed_count", adom), ts_iso
+            ),
+            # Change-control rows shown on the domain member table (see
+            # MEMBER_METRICS above) — not part of _score_availability's
+            # formula; the scorer below simply ignores unknown input keys.
+            # Neither has a per-ADOM breakdown, so the ADOM filter leaves
+            # them at their fleet-wide value.
+            "change_control.devices_out_of_sync": _fleet_sum(
+                system, "change_control.devices_out_of_sync", ts_iso
+            ),
+            "change_control.admin_changes_24h": _fleet_sum(
+                system, "change_control.admin_changes_24h", ts_iso
+            ),
         }
     if name == "posture":
         return {
+            # hygiene_score itself has no per-ADOM breakdown; its weight
+            # (firewall_managed_count) stays fleet-wide too, since
+            # weighting a fleet-wide value by an ADOM-scoped device count
+            # wouldn't be a meaningful average.
             "hygiene_score": _fleet_weighted_avg(system, "hygiene_score", "firewall_managed_count", ts_iso),
             "version_compliance_pct": _fleet_weighted_avg(
-                system, "version_compliance_pct", "firewall_managed_count", ts_iso
+                system,
+                _effective_key("version_compliance_pct", adom),
+                _effective_key("firewall_managed_count", adom),
+                ts_iso,
             ),
             "device_review.devices_with_failures": _fleet_sum(
-                system, "device_review.devices_with_failures", ts_iso
+                system, _effective_key("device_review.devices_with_failures", adom), ts_iso
             ),
+        }
+    if name == "vulnerability":
+        return {
+            "psirt.devices_critical": _fleet_sum(system, "psirt.devices_critical", ts_iso),
+            "psirt.devices_high": _fleet_sum(system, "psirt.devices_high", ts_iso),
+            "psirt.devices_medium": _fleet_sum(system, "psirt.devices_medium", ts_iso),
+            "psirt.kev_exposed_devices": _fleet_sum(system, "psirt.kev_exposed_devices", ts_iso),
         }
     if name == "hygiene":
         return {
@@ -216,6 +291,30 @@ def _domain_inputs(name: str, ts_iso: str) -> dict[str, float | None]:
         return {
             "devices_silent": _fleet_sum(system, "devices_silent", ts_iso),
             "faz_disk_used_pct": _fleet_max(system, "faz_disk_used_pct", ts_iso),
+        }
+    if name == "lifecycle":
+        return {
+            "version_compliance_pct": _fleet_weighted_avg(
+                system,
+                _effective_key("version_compliance_pct", adom),
+                _effective_key("firewall_managed_count", adom),
+                ts_iso,
+            ),
+            # devices_on_eol_version and the lifecycle.* hardware-EOS
+            # counts have no per-ADOM breakdown — unaffected by the filter.
+            "devices_on_eol_version": _fleet_sum(system, "devices_on_eol_version", ts_iso),
+            "lifecycle.devices_hw_eos": _fleet_sum(system, "lifecycle.devices_hw_eos", ts_iso),
+            "lifecycle.devices_hw_eos_12m": _fleet_sum(
+                system, "lifecycle.devices_hw_eos_12m", ts_iso
+            ),
+            # Denominator for the software-EOL / hardware-EOS percentage
+            # components below — deliberately always fleet-wide (never
+            # ADOM-scoped) since devices_on_eol_version and
+            # lifecycle.devices_hw_eos above have no per-ADOM breakdown to
+            # pair it with; scoping only the denominator would produce a
+            # nonsensical ratio. Not itself a member-table row here (it
+            # already is one on the Availability & Change domain).
+            "firewall_managed_count": _fleet_sum(system, "firewall_managed_count", ts_iso),
         }
     return {}
 
@@ -251,6 +350,78 @@ def _score_posture(inputs: dict, params: dict) -> tuple[float | None, str | None
         f"(100−compliance)×{params['version_weight']} = (100−{compliance:.0f})×{params['version_weight']} "
         f"= {compliance_penalty:.1f}; failing devices {failures:.0f}×{params['per_failing_device']} "
         f"capped at {params['failing_device_cap']} = {failure_penalty:.1f}. Score = {score}."
+    )
+    return score, why, explanation
+
+
+def _score_vulnerability(inputs: dict, params: dict) -> tuple[float | None, str | None, str | None]:
+    critical = inputs.get("psirt.devices_critical")
+    high = inputs.get("psirt.devices_high")
+    medium = inputs.get("psirt.devices_medium")
+    kev = inputs.get("psirt.kev_exposed_devices")
+    if critical is None and high is None and medium is None and kev is None:
+        return None, None, None
+    critical = critical or 0.0
+    high = high or 0.0
+    medium = medium or 0.0
+    kev = kev or 0.0
+    # "KEV/critical" devices are whichever count is larger — kev_exposed_devices
+    # spans every open advisory regardless of band, devices_critical is scoped
+    # to the critical-priority band; neither is a strict subset of the other,
+    # so the union can't be derived exactly from the executive summary alone.
+    top_count = max(critical, kev)
+    critical_penalty = min(top_count * params["critical_penalty_per_device"], params["critical_cap"])
+    high_penalty = min(high * params["high_penalty_per_device"], params["high_cap"])
+    medium_penalty = min(medium * params["medium_penalty_per_device"], params["medium_cap"])
+    score = max(0.0, min(100.0, round(100.0 - critical_penalty - high_penalty - medium_penalty, 1)))
+    why = f"{top_count:.0f} KEV/critical · {high:.0f} high · {medium:.0f} medium exposure device(s)"
+    explanation = (
+        f"Start at 100. KEV/critical devices {top_count:.0f}×{params['critical_penalty_per_device']} "
+        f"capped at {params['critical_cap']} = {critical_penalty:.1f}; high {high:.0f}×"
+        f"{params['high_penalty_per_device']} capped at {params['high_cap']} = {high_penalty:.1f}; "
+        f"medium {medium:.0f}×{params['medium_penalty_per_device']} capped at {params['medium_cap']} "
+        f"= {medium_penalty:.1f}. Score = {score}."
+    )
+    return score, why, explanation
+
+
+def _score_lifecycle(inputs: dict, params: dict) -> tuple[float | None, str | None, str | None]:
+    compliance = inputs.get("version_compliance_pct")
+    eol_devices = inputs.get("devices_on_eol_version")
+    hw_eos_devices = inputs.get("lifecycle.devices_hw_eos")
+    total = inputs.get("firewall_managed_count")
+    if compliance is None and eol_devices is None and hw_eos_devices is None:
+        return None, None, None
+
+    compliance = 100.0 if compliance is None else compliance
+    eol_pct = 0.0
+    hw_eos_pct = 0.0
+    if total and total > 0:
+        if eol_devices is not None:
+            eol_pct = min(100.0, eol_devices / total * 100)
+        if hw_eos_devices is not None:
+            hw_eos_pct = min(100.0, hw_eos_devices / total * 100)
+    software_component = 100.0 - eol_pct
+    hardware_component = 100.0 - hw_eos_pct
+
+    score = max(
+        0.0,
+        min(
+            100.0,
+            round(
+                compliance * params["firmware_weight"]
+                + software_component * params["software_eol_weight"]
+                + hardware_component * params["hardware_eos_weight"],
+                1,
+            ),
+        ),
+    )
+    why = f"{eol_devices or 0:.0f} on EOL firmware · {hw_eos_devices or 0:.0f} on EOS hardware"
+    explanation = (
+        f"Weighted: firmware compliance {compliance:.0f}×{params['firmware_weight']} + "
+        f"software-EOL component {software_component:.1f}×{params['software_eol_weight']} + "
+        f"hardware-EOS component {hardware_component:.1f}×{params['hardware_eos_weight']} "
+        f"= {score}."
     )
     return score, why, explanation
 
@@ -295,12 +466,16 @@ def _score_logging(inputs: dict, params: dict) -> tuple[float | None, str | None
 _SCORERS = {
     "availability": _score_availability,
     "posture": _score_posture,
+    "vulnerability": _score_vulnerability,
     "hygiene": _score_hygiene,
     "logging": _score_logging,
+    "lifecycle": _score_lifecycle,
 }
 
 
-def compute_domain(name: str, *, compare_to: str = "7d", now: datetime | None = None) -> dict:
+def compute_domain(
+    name: str, *, compare_to: str = "7d", now: datetime | None = None, adom: str | None = None
+) -> dict:
     spec = DOMAINS[name]
     now = now or datetime.now(UTC)
     result = {
@@ -321,13 +496,21 @@ def compute_domain(name: str, *, compare_to: str = "7d", now: datetime | None = 
     config = get_scoring_config()
     params = config["domains"].get(name, {})
     now_iso = _now_iso(now)
-    now_inputs = _domain_inputs(name, now_iso)
+    now_inputs = _domain_inputs(name, now_iso, adom=adom)
     score, why, explanation = _SCORERS[name](now_inputs, params)
+
+    grade = grade_for(score)
+    if name == "vulnerability" and (now_inputs.get("psirt.kev_exposed_devices") or 0) > 0:
+        # A single KEV-listed device in the fleet is a director-escalation
+        # event regardless of how the rest of the fleet scores — grade
+        # floors to F even if the numeric score (capped penalties) would
+        # otherwise round up to a passing letter.
+        grade = "F"
 
     result.update(
         {
             "score": score,
-            "grade": grade_for(score),
+            "grade": grade,
             "why": why,
             "explanation": explanation,
             "inputs": now_inputs,
@@ -338,7 +521,7 @@ def compute_domain(name: str, *, compare_to: str = "7d", now: datetime | None = 
 
     if score is not None:
         baseline_iso = _now_iso(baseline_cutoff(compare_to, now))
-        baseline_inputs = _domain_inputs(name, baseline_iso)
+        baseline_inputs = _domain_inputs(name, baseline_iso, adom=adom)
         baseline_score, _, _ = _SCORERS[name](baseline_inputs, params)
         if baseline_score is not None:
             result["delta"] = round(score - baseline_score, 1)
@@ -346,11 +529,15 @@ def compute_domain(name: str, *, compare_to: str = "7d", now: datetime | None = 
     return result
 
 
-def compute_overall(*, compare_to: str = "7d", now: datetime | None = None) -> dict:
+def compute_overall(
+    *, compare_to: str = "7d", now: datetime | None = None, adom: str | None = None
+) -> dict:
     now = now or datetime.now(UTC)
     config = get_scoring_config()
     weights = config["domain_weights"]
-    domain_results = {name: compute_domain(name, compare_to=compare_to, now=now) for name in DOMAINS}
+    domain_results = {
+        name: compute_domain(name, compare_to=compare_to, now=now, adom=adom) for name in DOMAINS
+    }
 
     measured = [(name, r) for name, r in domain_results.items() if r["score"] is not None]
     overall_score = None
@@ -415,14 +602,58 @@ def _metric_rag(metric_key: str, value: float | None) -> str | None:
     return None
 
 
-def domain_member_table(name: str, *, compare_to: str = "7d", now: datetime | None = None) -> list[dict]:
+def get_infra_devices() -> list[dict]:
+    """Management-plane infra health, merged from every enabled 4thealth
+    and 4tlog source's latest snapshot "infra" list — feeds the
+    Availability & Change domain page's Infrastructure card.
+
+    Read directly from the latest snapshot, not metric_points: "infra" is
+    a per-device list (FortiManager/FortiAnalyzer/FortiAuthenticator
+    targets), not a single fleet scalar, so it isn't a metric_points
+    candidate the way by_adom's scalars are. Snapshot-only also means this
+    card shows "now" status only, no delta/history — appropriate for an
+    infra status list.
+
+    Normalizes 4tlog's "disk_used_pct" field name to 4thealth-plus's own
+    "disk_pct" so every device in the merged list has one consistent key.
+    """
+    devices: list[dict] = []
+    for source in list_sources():
+        if not source.get("enabled", True) or source.get("system") not in ("4thealth", "4tlog"):
+            continue
+        latest = get_latest(source["id"], "summary")
+        if latest is None:
+            continue
+        infra_list = latest["value"].get("infra")
+        if not isinstance(infra_list, list):
+            continue
+        for entry in infra_list:
+            if not isinstance(entry, dict):
+                continue
+            device = dict(entry)
+            device["source_name"] = source["name"]
+            if "disk_pct" not in device and "disk_used_pct" in device:
+                device["disk_pct"] = device.pop("disk_used_pct")
+            # 4tlog's faz_health_cache classifies its warn tier as "yellow";
+            # 4thealth-plus (and this card's own status-dot CSS) uses
+            # "amber" for the same tier -- normalize so a merged list has
+            # one consistent status vocabulary.
+            if device.get("status") == "yellow":
+                device["status"] = "amber"
+            devices.append(device)
+    return devices
+
+
+def domain_member_table(
+    name: str, *, compare_to: str = "7d", now: datetime | None = None, adom: str | None = None
+) -> list[dict]:
     if DOMAINS[name]["system"] is None:
         return []
     now = now or datetime.now(UTC)
     now_iso = _now_iso(now)
     baseline_iso = _now_iso(baseline_cutoff(compare_to, now))
-    now_inputs = _domain_inputs(name, now_iso)
-    baseline_inputs = _domain_inputs(name, baseline_iso)
+    now_inputs = _domain_inputs(name, now_iso, adom=adom)
+    baseline_inputs = _domain_inputs(name, baseline_iso, adom=adom)
 
     rows = []
     for member in MEMBER_METRICS[name]:
@@ -437,6 +668,7 @@ def domain_member_table(name: str, *, compare_to: str = "7d", now: datetime | No
                 "now": now_value,
                 "delta": delta,
                 "rag": _metric_rag(key, now_value),
+                "adom_scoped": bool(adom and by_adom_metric_key(key, adom)),
             }
         )
     return rows

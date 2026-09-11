@@ -3166,6 +3166,10 @@ a:hover { text-decoration: underline; }
 
 .board-metric-label { font-weight: 600; }
 .board-metric-source { display: block; margin-left: 18px; font-size: .72rem; color: var(--text-muted); }
+.board-adom-badge { display: inline-block; margin-left: .4rem; padding: .05rem .35rem; font-size: .68rem; font-weight: 600; border-radius: 3px; background: var(--accent-muted, var(--surface-alt)); color: var(--accent); border: 1px solid var(--accent); }
+.board-adom-note, .scorecard-adom-note { font-size: .8rem; color: var(--text-muted); margin: -.25rem 0 .75rem; }
+.scorecard-adom-filter { display: flex; align-items: center; gap: .4rem; margin-left: auto; }
+.scorecard-adom-filter select { font-size: .8rem; padding: .15rem .4rem; }
 
 .board-now { font-size: 1.05rem; font-weight: 700; }
 
