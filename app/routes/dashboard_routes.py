@@ -9,7 +9,14 @@ from flask import Blueprint, jsonify, make_response, render_template, request, s
 from app.decorators import tab_required
 from app.layouts import get_layout, save_layout
 from app.sources import get_source
-from app.widgets import DEFAULT_RANGE, RANGES, WIDGET_CATALOG, annotate, default_layout, group_by_system
+from app.widgets import (
+    DEFAULT_RANGE,
+    RANGES,
+    WIDGET_CATALOG,
+    annotate,
+    default_layout,
+    group_by_system,
+)
 
 bp = Blueprint("dashboard", __name__)
 

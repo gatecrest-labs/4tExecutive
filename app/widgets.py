@@ -294,9 +294,9 @@ def group_by_system(widgets: list[dict]) -> list[dict]:
         buckets.setdefault(system, []).append(widget)
 
     sections = []
-    for system in SECTION_TITLES:
+    for system, title in SECTION_TITLES.items():
         if system in buckets:
-            sections.append({"system": system, "title": SECTION_TITLES[system], "widgets": buckets.pop(system)})
+            sections.append({"system": system, "title": title, "widgets": buckets.pop(system)})
     for system, widgets_in_bucket in buckets.items():
         sections.append({"system": system, "title": SECTION_TITLES.get(system, system), "widgets": widgets_in_bucket})
     return sections
