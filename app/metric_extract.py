@@ -4,11 +4,13 @@ the uniform (metric_key -> float) time series stored in metric_points.
 Every scalar WIDGET_CATALOG reads today gets a registry entry keyed by its
 catalog "field" name, plus the nested rollup scalars and derived metrics
 listed in the metric_points design (device_review.*, rule_hygiene.*,
-devices_silent, faz_disk_used_pct, fleet_availability_pct). A composite dict
-field with no single sensible scalar (version_breakdown, device_review,
-ai_usage_24h, rule_hygiene) still gets a registry entry — so every catalog
-field is covered — but its extractor always returns None; its useful
-children are extracted separately by their own dotted-path keys.
+psirt.*, change_control.*, devices_silent, faz_disk_used_pct,
+fleet_availability_pct). A composite dict field with no single sensible
+scalar (version_breakdown, device_review, ai_usage_24h, rule_hygiene,
+psirt, psirt.top_advisory, change_control, change_control.admin_changes_by_user)
+still gets a registry entry — so every catalog field is covered — but its
+extractor always returns None; its useful children are extracted
+separately by their own dotted-path keys.
 """
 
 from __future__ import annotations
@@ -47,6 +49,27 @@ def _last_backup_status(payload: dict) -> float | None:
     return 1.0 if status.strip().lower().startswith("ok") else 0.0
 
 
+def _devices_on_eol_version(payload: dict) -> float | None:
+    """Sum of per-version device counts flagged "eol": true in
+    version_breakdown -- a derived scalar since version_breakdown itself is
+    a composite {version: {count, eol}} dict with no single number."""
+    breakdown = payload.get("version_breakdown")
+    if not isinstance(breakdown, dict):
+        return None
+    total_eol = 0.0
+    found = False
+    for info in breakdown.values():
+        if not isinstance(info, dict):
+            continue
+        count = _num(info.get("count"))
+        if count is None:
+            continue
+        found = True
+        if info.get("eol"):
+            total_eol += count
+    return total_eol if found else None
+
+
 def _fleet_availability_pct(payload: dict) -> float | None:
     online = _num(payload.get("firewall_online_count"))
     total = _num(payload.get("firewall_managed_count"))
@@ -69,6 +92,59 @@ def _nested(*path: str) -> Callable[[dict], float | None]:
 
 def _no_scalar(_payload: dict) -> float | None:
     return None
+
+
+# Per-ADOM breakdown (4thealth-plus schema_version 2's "by_adom" key).
+# Every field this repo can meaningfully filter the Board/Scorecard by,
+# per ADOM.
+BY_ADOM_FIELDS = [
+    "firewalls_total",
+    "firewall_online_count",
+    "version_compliance_pct",
+    "pending_config_diff_count",
+    "devices_with_failures",
+]
+
+# Fleet-wide metric_key (as read by WIDGET_CATALOG / app.domains) -> the
+# corresponding field name inside each ADOM's entry in "by_adom". Only
+# metrics with a genuine per-ADOM breakdown appear here — anything else
+# keeps showing its fleet-wide value even when an ADOM filter is active
+# (see by_adom_metric_key()). Note "firewall_managed_count" (the fleet-wide
+# name) maps to "firewalls_total" (the by_adom field name) — 4thealth-plus
+# uses that name intentionally for the per-ADOM breakdown; it is not a typo.
+BY_ADOM_FIELD_MAP: dict[str, str] = {
+    "firewall_managed_count": "firewalls_total",
+    "firewall_online_count": "firewall_online_count",
+    "version_compliance_pct": "version_compliance_pct",
+    "pending_config_diff_count": "pending_config_diff_count",
+    "device_review.devices_with_failures": "devices_with_failures",
+}
+
+
+def by_adom_metric_key(metric_key: str, adom: str) -> str | None:
+    """The metric_points key holding *adom*'s value for a fleet-wide
+    metric_key, or None if that metric has no per-ADOM breakdown."""
+    field = BY_ADOM_FIELD_MAP.get(metric_key)
+    if field is None:
+        return None
+    return f"by_adom.{adom}.{field}"
+
+
+def _extract_by_adom(payload: dict) -> dict[str, float]:
+    """One metric_point per (ADOM, field) in "by_adom" — dynamic like
+    _extract_rule_findings_by_type since the set of ADOMs varies."""
+    by_adom = payload.get("by_adom")
+    if not isinstance(by_adom, dict):
+        return {}
+    result: dict[str, float] = {}
+    for adom, metrics in by_adom.items():
+        if not isinstance(metrics, dict):
+            continue
+        for field in BY_ADOM_FIELDS:
+            value = _num(metrics.get(field))
+            if value is not None:
+                result[f"by_adom.{adom}.{field}"] = value
+    return result
 
 
 # Fixed metric_key -> extractor registry. Keys matching a WIDGET_CATALOG
@@ -112,6 +188,34 @@ EXTRACTORS: dict[str, Callable[[dict], float | None]] = {
         "device_review", "findings_by_severity", "low"
     ),
     "rule_hygiene.rule_findings_total": _nested("rule_hygiene", "rule_findings_total"),
+    # Change-control (4thealth-plus schema_version 2, app.change_control_cache
+    # + app.executive_summary_cache's device sweep).
+    "change_control": _no_scalar,
+    "change_control.devices_out_of_sync": _nested("change_control", "devices_out_of_sync"),
+    "change_control.admin_changes_24h": _nested("change_control", "admin_changes_24h"),
+    "change_control.admin_changes_by_user": _no_scalar,
+    # Lifecycle / hardware EOS (4thealth-plus schema_version 2,
+    # app.model_eos + app.executive_summary_cache's device sweep).
+    "lifecycle": _no_scalar,
+    "lifecycle.devices_hw_eos": _nested("lifecycle", "devices_hw_eos"),
+    "lifecycle.devices_hw_eos_12m": _nested("lifecycle", "devices_hw_eos_12m"),
+    "lifecycle.models_unknown": _no_scalar,
+    "devices_on_eol_version": _devices_on_eol_version,
+    # Per-ADOM breakdown and management-plane infra — both composite,
+    # dynamically-shaped fields with no single scalar of their own; see
+    # _extract_by_adom() for by_adom's dynamic per-ADOM keys.
+    "by_adom": _no_scalar,
+    "infra": _no_scalar,
+    # PSIRT fleet exposure (4thealth-plus schema_version 2, app.psirt_store).
+    "psirt": _no_scalar,
+    "psirt.open_advisories": _nested("psirt", "open_advisories"),
+    "psirt.devices_critical": _nested("psirt", "devices_critical"),
+    "psirt.devices_high": _nested("psirt", "devices_high"),
+    "psirt.devices_medium": _nested("psirt", "devices_medium"),
+    "psirt.devices_critical_mitigated": _nested("psirt", "devices_critical_mitigated"),
+    "psirt.kev_exposed_devices": _nested("psirt", "kev_exposed_devices"),
+    "psirt.mean_days_to_remediate_90d": _nested("psirt", "mean_days_to_remediate_90d"),
+    "psirt.top_advisory": _no_scalar,
     # Derived.
     "fleet_availability_pct": _fleet_availability_pct,
 }
@@ -141,6 +245,7 @@ def extract_all(payload: dict) -> dict[str, float]:
         if value is not None:
             points[metric_key] = value
     points.update(_extract_rule_findings_by_type(payload))
+    points.update(_extract_by_adom(payload))
     return points
 
 

@@ -36,12 +36,24 @@
       {% endfor %}
     </select>
   </div>
+  <div class="board-control-group">
+    <label class="board-control-label" for="adomFilter">ADOM</label>
+    <select id="adomFilter" name="adom" onchange="this.form.submit()">
+      <option value="">All (fleet-wide)</option>
+      {% for a in adoms %}
+      <option value="{{ a }}"{% if adom_filter == a %} selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
 </form>
+{% if adom_filter %}
+<p class="board-adom-note">Showing <strong>{{ adom_filter }}</strong> values for metrics with a per-ADOM breakdown — other rows still show their fleet-wide value.</p>
+{% endif %}
 
 <div class="board-sort-row">
   Sort:
   {% for key, text in [("status", "status"), ("delta", "delta"), ("name", "name")] %}
-  <a class="board-sort-link{% if sort == key %} active{% endif %}" href="{{ url_for('dashboard.index', sort=key, domain=domain_filter, source=source_filter) }}">{{ text }}</a>
+  <a class="board-sort-link{% if sort == key %} active{% endif %}" href="{{ url_for('dashboard.index', sort=key, domain=domain_filter, source=source_filter, adom=adom_filter) }}">{{ text }}</a>
   {% endfor %}
   <a class="board-csv-link" href="{{ url_for('dashboard.board_csv') }}">Export CSV</a>
 </div>
@@ -69,6 +81,7 @@
       <td>
         <span class="board-status-dot board-status-{{ row.status or 'none' }}"></span>
         <span class="board-metric-label">{{ row.label }}</span>
+        {% if row.adom_scoped %}<span class="board-adom-badge" title="Showing {{ adom_filter }}'s value">{{ adom_filter }}</span>{% endif %}
         <span class="board-metric-source">{{ row.source_name }}</span>
       </td>
       <td class="board-now">{% if row.now is not none %}{{ row.now }}{{ row.unit or '' }}{% else %}&mdash;{% endif %}</td>

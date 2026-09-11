@@ -11,13 +11,14 @@ from app.domains import (
     compute_domain,
     compute_overall,
     domain_member_table,
+    get_infra_devices,
     get_scoring_config,
     grade_for,
     rag_for_grade,
     save_scoring_config,
     store_domain_scores,
 )
-from app.metrics_db import get_metric_series, init_db, insert_metric_points
+from app.metrics_db import get_metric_series, init_db, insert_metric_points, write_snapshot
 from app.sources import add_source
 
 
@@ -99,6 +100,67 @@ def test_compute_domain_availability_sums_across_multiple_sources():
     assert result["score"] == pytest.approx(93.8, abs=0.01)
 
 
+def test_compute_domain_adom_filter_reads_by_adom_availability():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {
+        "firewall_online_count": 100.0,
+        "firewall_managed_count": 100.0,
+        "by_adom.Corp.firewall_online_count": 5.0,
+        "by_adom.Corp.firewalls_total": 10.0,
+    })
+
+    fleet = compute_domain("availability")
+    corp = compute_domain("availability", adom="Corp")
+
+    assert fleet["score"] == 100.0
+    assert corp["score"] == 50.0  # 5/10 online for Corp specifically
+    assert corp["inputs"]["firewall_online_count"] == 5.0
+    assert corp["inputs"]["firewall_managed_count"] == 10.0
+
+
+def test_domain_member_table_adom_filter_marks_scoped_rows():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {
+        "firewall_online_count": 100.0,
+        "firewall_managed_count": 100.0,
+        "by_adom.Corp.firewall_online_count": 5.0,
+        "by_adom.Corp.firewalls_total": 10.0,
+    })
+
+    rows = domain_member_table("availability", adom="Corp")
+
+    online_row = next(r for r in rows if r["key"] == "firewall_online_count")
+    assert online_row["now"] == 5.0
+    assert online_row["adom_scoped"] is True
+
+    admin_row = next(r for r in rows if r["key"] == "change_control.admin_changes_24h")
+    assert admin_row["adom_scoped"] is False  # no by_adom breakdown for this field
+
+
+def test_compute_domain_lifecycle_percentage_components_unaffected_by_adom_filter():
+    """devices_on_eol_version/devices_hw_eos have no per-ADOM breakdown, so
+    their percentage-of-fleet components must stay fleet-wide even when an
+    ADOM filter is active — scoping only the denominator would corrupt the
+    ratio."""
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {
+        "version_compliance_pct": 100.0,
+        "devices_on_eol_version": 10.0,
+        "lifecycle.devices_hw_eos": 0.0,
+        "firewall_managed_count": 100.0,
+        "by_adom.Corp.version_compliance_pct": 100.0,
+        "by_adom.Corp.firewalls_total": 5.0,
+    })
+
+    fleet = compute_domain("lifecycle")
+    corp = compute_domain("lifecycle", adom="Corp")
+
+    # Same firewall_managed_count denominator (100, fleet-wide) in both
+    # cases -- if Corp's smaller device count (5) leaked in as the
+    # denominator, the eol percentage would balloon to 10/5=200%+.
+    assert fleet["score"] == corp["score"]
+
+
 def test_compute_domain_availability_excludes_disabled_sources():
     _add_source("s1", "4thealth")
     _add_source("s2", "4thealth", enabled=False)
@@ -118,9 +180,189 @@ def test_compute_domain_not_measured_when_no_sources():
     assert result["rag"] is None
 
 
-def test_compute_domain_vulnerability_and_lifecycle_always_not_measured():
-    assert compute_domain("vulnerability")["score"] is None
+def test_compute_domain_lifecycle_not_measured_without_data():
     assert compute_domain("lifecycle")["score"] is None
+
+
+def test_compute_domain_returns_not_measured_for_a_domain_with_no_system(monkeypatch):
+    """The system-is-None short-circuit in compute_domain/domain_member_table
+    is now dead code against the real DOMAINS table (every domain has a
+    real system as of the lifecycle wiring) but is kept as a defensive
+    guard for any future domain added ahead of its data source landing —
+    exercise it directly rather than dropping the coverage."""
+    import app.domains as domains_module
+
+    monkeypatch.setitem(domains_module.DOMAINS, "future_domain", {"label": "Future", "system": None})
+    monkeypatch.setitem(domains_module.MEMBER_METRICS, "future_domain", [{"key": "x", "label": "X"}])
+
+    result = compute_domain("future_domain")
+    assert result["score"] is None
+    assert result["grade"] is None
+    assert result["rag"] is None
+    assert domain_member_table("future_domain") == []
+
+
+def test_compute_domain_vulnerability_not_measured_without_psirt_data():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {"firewall_online_count": 100.0, "firewall_managed_count": 100.0})
+
+    assert compute_domain("vulnerability")["score"] is None
+
+
+def test_compute_domain_vulnerability_scoring():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "psirt.devices_critical": 2.0,
+            "psirt.devices_high": 1.0,
+            "psirt.devices_medium": 1.0,
+            "psirt.kev_exposed_devices": 0.0,
+        },
+    )
+
+    result = compute_domain("vulnerability")
+
+    # top(critical=2, kev=0) = 2 -> penalty min(2*20, 60) = 40
+    # high 1*3 = 3; medium 1*1 = 1
+    # score = 100 - 40 - 3 - 1 = 56
+    assert result["score"] == 56.0
+    assert result["grade"] == "F"  # 56 < 60 on the normal scale too
+
+
+def test_compute_domain_vulnerability_penalty_is_capped():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "psirt.devices_critical": 100.0,
+            "psirt.devices_high": 100.0,
+            "psirt.devices_medium": 100.0,
+            "psirt.kev_exposed_devices": 0.0,
+        },
+    )
+
+    result = compute_domain("vulnerability")
+
+    assert result["score"] == 0.0  # 100 - 60 - 30 - 10
+
+
+def test_compute_domain_vulnerability_grade_floors_to_f_on_any_kev_exposure():
+    """Even a score that would otherwise be a passing letter grade must
+    floor to F the moment any device is KEV-exposed — a single KEV hit is
+    an escalation event, not something a good average should mask."""
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "psirt.devices_critical": 0.0,
+            "psirt.devices_high": 0.0,
+            "psirt.devices_medium": 0.0,
+            "psirt.kev_exposed_devices": 1.0,
+        },
+    )
+
+    result = compute_domain("vulnerability")
+
+    # top(critical=0, kev=1) = 1 -> penalty 20 -> score 80, which alone
+    # would be grade B — the KEV override must still floor it to F.
+    assert result["score"] == 80.0
+    assert result["grade"] == "F"
+    assert result["rag"] == "red"
+
+
+def test_compute_domain_vulnerability_no_kev_no_forced_grade():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "psirt.devices_critical": 0.0,
+            "psirt.devices_high": 0.0,
+            "psirt.devices_medium": 0.0,
+            "psirt.kev_exposed_devices": 0.0,
+        },
+    )
+
+    result = compute_domain("vulnerability")
+
+    assert result["score"] == 100.0
+    assert result["grade"] == "A"
+
+
+def test_compute_domain_lifecycle_perfect_fleet():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "version_compliance_pct": 100.0,
+            "devices_on_eol_version": 0.0,
+            "lifecycle.devices_hw_eos": 0.0,
+            "firewall_managed_count": 100.0,
+        },
+    )
+
+    result = compute_domain("lifecycle")
+
+    assert result["score"] == 100.0
+    assert result["grade"] == "A"
+
+
+def test_compute_domain_lifecycle_weighted_components():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "version_compliance_pct": 80.0,
+            "devices_on_eol_version": 20.0,
+            "lifecycle.devices_hw_eos": 10.0,
+            "firewall_managed_count": 100.0,
+        },
+    )
+
+    result = compute_domain("lifecycle")
+
+    # firmware: 80 * 0.5 = 40
+    # software-EOL component: (100 - 20) * 0.25 = 20
+    # hardware-EOS component: (100 - 10) * 0.25 = 22.5
+    # total = 82.5
+    assert result["score"] == pytest.approx(82.5, abs=0.01)
+
+
+def test_compute_domain_lifecycle_missing_component_defaults_to_optimistic_100():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {"version_compliance_pct": 60.0})
+
+    result = compute_domain("lifecycle")
+
+    # firmware: 60*0.5=30; software-EOL and hardware-EOS default to the
+    # optimistic 100 component each (no data => not penalized).
+    assert result["score"] == pytest.approx(30.0 + 25.0 + 25.0, abs=0.01)
+
+
+def test_compute_domain_lifecycle_no_denominator_treats_percentages_as_zero():
+    """Without firewall_managed_count there's no denominator for the
+    percentage components — they must default to the fully-healthy 100
+    rather than raising or fabricating a rate."""
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "version_compliance_pct": 90.0,
+            "devices_on_eol_version": 5.0,
+            "lifecycle.devices_hw_eos": 5.0,
+        },
+    )
+
+    result = compute_domain("lifecycle")
+
+    assert result["score"] == pytest.approx(90.0 * 0.5 + 25.0 + 25.0, abs=0.01)
 
 
 def test_compute_domain_posture_weighted_average_and_failure_penalty():
@@ -216,8 +458,8 @@ def test_compute_overall_weighted_mean_excludes_unmeasured_domains():
     config = get_scoring_config()
     assert overall["domains"]["vulnerability"]["score"] is None
     assert overall["domains"]["availability"]["score"] == 100.0
-    # Only availability, posture, hygiene, logging can ever be measured here;
-    # only availability has data, so overall == availability's score exactly.
+    # Every domain can be measured given the right metric_points, but only
+    # availability has any here, so overall == availability's score exactly.
     assert overall["score"] == 100.0
     assert config["domain_weights"]["availability"] > 0
 
@@ -292,5 +534,109 @@ def test_domain_member_table_includes_now_delta_and_rag():
     assert hygiene_row["rag"] == "green"
 
 
-def test_domain_member_table_empty_for_unmeasured_domain():
-    assert domain_member_table("vulnerability") == []
+def test_domain_member_table_includes_change_control_rows_with_rag():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "firewall_online_count": 100.0,
+            "firewall_managed_count": 100.0,
+            "change_control.devices_out_of_sync": 5.0,
+            "change_control.admin_changes_24h": 12.0,
+        },
+    )
+
+    rows = domain_member_table("availability")
+
+    out_of_sync_row = next(r for r in rows if r["key"] == "change_control.devices_out_of_sync")
+    assert out_of_sync_row["now"] == 5.0
+    assert out_of_sync_row["rag"] == "red"  # lower/green0/amber3 -> 5 is red
+
+    admin_changes_row = next(r for r in rows if r["key"] == "change_control.admin_changes_24h")
+    assert admin_changes_row["now"] == 12.0
+    # direction "none", no rag threshold configured -> informational only
+    assert admin_changes_row["rag"] is None
+
+
+def test_score_availability_ignores_change_control_inputs():
+    """P8 only adds these as display rows on the domain member table — the
+    Availability score formula itself must stay online/managed only."""
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "firewall_online_count": 100.0,
+            "firewall_managed_count": 100.0,
+            "change_control.devices_out_of_sync": 999.0,
+            "change_control.admin_changes_24h": 999.0,
+        },
+    )
+
+    result = compute_domain("availability")
+
+    assert result["score"] == 100.0
+
+
+def test_domain_member_table_empty_for_domain_with_no_system(monkeypatch):
+    import app.domains as domains_module
+
+    monkeypatch.setitem(domains_module.DOMAINS, "future_domain", {"label": "Future", "system": None})
+    monkeypatch.setitem(domains_module.MEMBER_METRICS, "future_domain", [{"key": "x", "label": "X"}])
+
+    assert domain_member_table("future_domain") == []
+
+
+# ── get_infra_devices ─────────────────────────────────────────────────────────
+
+def test_get_infra_devices_merges_across_sources_and_normalizes_disk_field():
+    _add_source("s1", "4thealth")
+    _add_source("s2", "4tlog")
+    write_snapshot("s1", "summary", {"infra": [
+        {"role": "fortimanager", "label": "FMG-01", "hostname": "fmg1.local",
+         "cpu": 12.0, "mem": 25.0, "disk_pct": 33.0, "ha_role": "master", "status": "green"},
+    ]}, "2026-09-10T00:00:00Z")
+    write_snapshot("s2", "summary", {"infra": [
+        {"role": "fortianalyzer", "label": "FAZ-01", "hostname": "faz1.local", "version": "v7.4.5",
+         "cpu": 10.0, "mem": 20.0, "disk_used_pct": 60.0, "ha_role": None, "status": "green"},
+    ]}, "2026-09-10T00:00:00Z")
+
+    devices = get_infra_devices()
+
+    assert len(devices) == 2
+    fmg = next(d for d in devices if d["role"] == "fortimanager")
+    faz = next(d for d in devices if d["role"] == "fortianalyzer")
+    assert fmg["disk_pct"] == 33.0
+    assert faz["disk_pct"] == 60.0  # normalized from disk_used_pct
+    assert "disk_used_pct" not in faz
+    assert fmg["source_name"] == "s1"
+
+
+def test_get_infra_devices_excludes_disabled_sources():
+    _add_source("s1", "4thealth", enabled=False)
+    write_snapshot("s1", "summary", {"infra": [{"role": "fortimanager", "label": "FMG-01"}]}, "2026-09-10T00:00:00Z")
+
+    assert get_infra_devices() == []
+
+
+def test_get_infra_devices_empty_when_no_snapshot_yet():
+    _add_source("s1", "4thealth")
+    assert get_infra_devices() == []
+
+
+def test_get_infra_devices_ignores_sources_with_no_infra_key():
+    _add_source("s1", "4thealth")
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-09-10T00:00:00Z")
+    assert get_infra_devices() == []
+
+
+def test_get_infra_devices_normalizes_yellow_status_to_amber():
+    _add_source("s1", "4tlog")
+    write_snapshot("s1", "summary", {"infra": [
+        {"role": "fortianalyzer", "label": "FAZ-01", "status": "yellow"},
+    ]}, "2026-09-10T00:00:00Z")
+
+    devices = get_infra_devices()
+
+    assert devices[0]["status"] == "amber"

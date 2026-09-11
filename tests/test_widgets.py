@@ -121,7 +121,10 @@ def test_get_widget_value_rag_string_ok_for_backup_status():
 
 
 def test_widget_catalog_backup_widget_relabeled():
-    assert WIDGET_CATALOG["4thealth.last_backup_status"]["label"] == "App Config Backup"
+    # Disambiguated from FortiGate device configuration backup age (a
+    # future "device_backup" metric) — this widget is 4thealth-plus's own
+    # application config backup.
+    assert WIDGET_CATALOG["4thealth.last_backup_status"]["label"] == "4thealth-plus App Config Backup"
 
 
 def test_get_widget_value_returns_none_when_no_snapshot_yet():

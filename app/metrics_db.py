@@ -218,6 +218,29 @@ def get_metric_latest_at_or_before(source_id: str, metric_key: str, before: str)
     return {"ts": row[0], "value": row[1]} if row else None
 
 
+def list_by_adom_names() -> list[str]:
+    """Distinct ADOM names with at least one by_adom.<adom>.* metric_point,
+    across every source and every field (an ADOM might have a data point
+    for only some of the by_adom fields depending on which sweeps have
+    completed) — populates the Board/Scorecard ADOM filter dropdown.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT metric_key FROM metric_points "
+            "WHERE metric_key LIKE 'by_adom.%.%'"
+        ).fetchall()
+    names = set()
+    for (metric_key,) in rows:
+        # "by_adom.<adom>.<field>" -- <adom> is everything between the
+        # first and last "." (ADOM names containing "." themselves are not
+        # expected in practice, matching this repo's other ADOM-name
+        # handling elsewhere).
+        parts = metric_key.split(".")
+        if len(parts) >= 3:
+            names.add(".".join(parts[1:-1]))
+    return sorted(names)
+
+
 def prune_snapshots_older_than(cutoff_iso: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM snapshots WHERE collected_at < ?", (cutoff_iso,))

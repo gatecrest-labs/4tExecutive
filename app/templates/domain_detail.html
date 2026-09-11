@@ -2,7 +2,7 @@
 {% import "_charts.html" as charts %}
 {% block content %}
 <div class="domain-detail-header">
-  <a class="domain-detail-back" href="{{ url_for('scorecard.index') }}">&larr; Scorecard</a>
+  <a class="domain-detail-back" href="{{ url_for('scorecard.index', adom=adom_filter) }}">&larr; Scorecard</a>
   <h1>{{ domain.label }}</h1>
   {% if domain.score is not none %}
   <div class="domain-detail-grade rag-{{ domain.rag }}">
@@ -12,12 +12,52 @@
   {% else %}
   <p class="scorecard-not-measured">not yet measured</p>
   {% endif %}
+  <form method="get" class="scorecard-adom-filter">
+    <input type="hidden" name="window" value="{{ window }}">
+    <label for="domainAdomFilter">ADOM</label>
+    <select id="domainAdomFilter" name="adom" onchange="this.form.submit()">
+      <option value="">All (fleet-wide)</option>
+      {% for a in adoms %}
+      <option value="{{ a }}"{% if adom_filter == a %} selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </form>
 </div>
+{% if adom_filter %}
+<p class="scorecard-adom-note">Showing <strong>{{ adom_filter }}</strong> values for member metrics with a per-ADOM breakdown. The score, grade, and trend chart above reflect {{ adom_filter }} only where its member metrics support it — the trend chart's history is always fleet-wide (per-ADOM score history isn't tracked).</p>
+{% endif %}
+
+{% if infra is not none %}
+<h2>Infrastructure</h2>
+{% if infra %}
+<table class="widget-table infra-card-table">
+  <thead>
+    <tr><th>Device</th><th>Role</th><th>Status</th><th>CPU</th><th>Mem</th><th>Disk</th><th>HA Role</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+  {% for device in infra %}
+    <tr>
+      <td>{{ device.hostname or device.label or '—' }}</td>
+      <td>{{ device.role or '—' }}</td>
+      <td><span class="board-status-dot board-status-{{ device.status or 'none' }}"></span>{{ device.status or 'unknown' }}</td>
+      <td>{% if device.cpu is not none %}{{ device.cpu }}%{% else %}—{% endif %}</td>
+      <td>{% if device.mem is not none %}{{ device.mem }}%{% else %}—{% endif %}</td>
+      <td>{% if device.disk_pct is not none %}{{ device.disk_pct }}%{% else %}—{% endif %}</td>
+      <td>{{ device.ha_role or '—' }}</td>
+      <td>{{ device.source_name }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="scorecard-not-measured">No management-plane infrastructure targets reported yet.</p>
+{% endif %}
+{% endif %}
 
 {% if domain.score is not none %}
 <div class="domain-detail-window-toggle">
   {% for w in windows %}
-  <a class="{% if w == window %}active{% endif %}" href="{{ url_for('scorecard.detail', name=domain.name, window=w) }}">{{ w }}</a>
+  <a class="{% if w == window %}active{% endif %}" href="{{ url_for('scorecard.detail', name=domain.name, window=w, adom=adom_filter) }}">{{ w }}</a>
   {% endfor %}
 </div>
 
@@ -31,7 +71,7 @@
   <tbody>
   {% for row in members %}
     <tr>
-      <td>{{ row.label }}</td>
+      <td>{{ row.label }}{% if row.adom_scoped %}<span class="board-adom-badge" title="Showing {{ adom_filter }}'s value">{{ adom_filter }}</span>{% endif %}</td>
       <td>{{ row.now if row.now is not none else '—' }}</td>
       <td>
         {% if row.delta is not none %}

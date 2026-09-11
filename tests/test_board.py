@@ -61,6 +61,48 @@ def test_build_rows_basic_fields():
     assert row["unit"] is None
 
 
+def test_build_rows_adom_filter_reads_by_adom_value():
+    _add_source("s1", "4thealth")
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 100}, _iso(5))
+    insert_metric_points("s1", _iso(5), {
+        "pending_config_diff_count": 100.0,
+        "by_adom.Corp.pending_config_diff_count": 42.0,
+    })
+
+    fleet_rows = build_rows(compare_to="yesterday", sparkline="30d")
+    corp_rows = build_rows(compare_to="yesterday", sparkline="30d", adom="Corp")
+
+    fleet_row = next(r for r in fleet_rows if r["widget_type"] == "4thealth.pending_config_diffs")
+    corp_row = next(r for r in corp_rows if r["widget_type"] == "4thealth.pending_config_diffs")
+    assert fleet_row["now"] == 100.0
+    assert fleet_row["adom_scoped"] is False
+    assert corp_row["now"] == 42.0
+    assert corp_row["adom_scoped"] is True
+
+
+def test_build_rows_adom_filter_leaves_unmapped_metrics_at_fleet_value():
+    _add_source("s1", "4thealth")
+    write_snapshot("s1", "summary", {"hygiene_score": 88}, _iso(5))
+    insert_metric_points("s1", _iso(5), {"hygiene_score": 88.0})
+
+    rows = build_rows(compare_to="yesterday", sparkline="30d", adom="Corp")
+
+    row = next(r for r in rows if r["widget_type"] == "4thealth.hygiene_score")
+    assert row["now"] == 88.0  # no by_adom breakdown for hygiene_score -> unaffected
+    assert row["adom_scoped"] is False
+
+
+def test_build_rows_adom_filter_none_when_adom_has_no_data():
+    _add_source("s1", "4thealth")
+    write_snapshot("s1", "summary", {"pending_config_diff_count": 100}, _iso(5))
+    insert_metric_points("s1", _iso(5), {"pending_config_diff_count": 100.0})
+
+    rows = build_rows(compare_to="yesterday", sparkline="30d", adom="NoDataADOM")
+
+    row = next(r for r in rows if r["widget_type"] == "4thealth.pending_config_diffs")
+    assert row["now"] is None
+
+
 def test_build_rows_percent_unit_for_pct_metric():
     _add_source("s1", "4thealth")
     write_snapshot(
@@ -196,7 +238,9 @@ def test_build_rows_sorted_by_name():
     rows = build_rows(compare_to="yesterday", sparkline="30d", sort="name")
 
     availability_names = [r["label"] for r in rows if r["domain"] == "availability"]
-    assert availability_names == sorted(availability_names)
+    # build_rows sorts by r["label"].lower() (case-insensitive) — compare
+    # against that same key, not a bare case-sensitive sort.
+    assert availability_names == sorted(availability_names, key=str.lower)
 
 
 def test_build_rows_sorted_by_delta_largest_absolute_first():

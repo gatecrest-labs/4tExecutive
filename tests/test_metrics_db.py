@@ -16,6 +16,7 @@ from app.metrics_db import (
     insert_event,
     insert_metric_points,
     iter_all_snapshots,
+    list_by_adom_names,
     prune_metric_points_older_than,
     prune_snapshots_older_than,
     save_layout,
@@ -267,3 +268,20 @@ def test_downsample_metric_points_leaves_already_daily_points_untouched():
 
     series = get_metric_series("s1", "hygiene_score", since="2026-01-01T00:00:00Z")
     assert series == [{"ts": "2026-08-01T00:00:00Z", "value": 80.0}]
+
+
+def test_list_by_adom_names_returns_distinct_sorted_names():
+    insert_metric_points("s1", "2026-09-10T00:00:00Z", {
+        "by_adom.Corp.firewalls_total": 10.0,
+        "by_adom.Branch.firewalls_total": 3.0,
+    })
+    insert_metric_points("s2", "2026-09-10T00:00:00Z", {
+        "by_adom.Corp.firewalls_total": 12.0,  # same adom, another source
+    })
+
+    assert list_by_adom_names() == ["Branch", "Corp"]
+
+
+def test_list_by_adom_names_empty_when_none_present():
+    insert_metric_points("s1", "2026-09-10T00:00:00Z", {"hygiene_score": 90.0})
+    assert list_by_adom_names() == []

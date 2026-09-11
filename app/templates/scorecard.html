@@ -3,6 +3,18 @@
 {% block content %}
 <div class="scorecard-header">
   <h1>Security Scorecard</h1>
+  <form method="get" class="scorecard-adom-filter">
+    <label for="scorecardAdomFilter">ADOM</label>
+    <select id="scorecardAdomFilter" name="adom" onchange="this.form.submit()">
+      <option value="">All (fleet-wide)</option>
+      {% for a in adoms %}
+      <option value="{{ a }}"{% if adom_filter == a %} selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if adom_filter %}
+  <p class="scorecard-adom-note">Showing <strong>{{ adom_filter }}</strong> values for metrics with a per-ADOM breakdown — scores and other rows fall back to fleet-wide where none exists.</p>
+  {% endif %}
   {% if overall.score is not none %}
   <div class="scorecard-overall rag-{{ overall.rag }}">
     <span class="scorecard-grade">{{ overall.grade }}</span>
@@ -22,7 +34,7 @@
 
 <div class="domain-card-grid">
   {% for card in cards %}
-  <a class="domain-card{% if card.rag %} rag-{{ card.rag }}{% endif %}" href="{{ url_for('scorecard.detail', name=card.name) }}">
+  <a class="domain-card{% if card.rag %} rag-{{ card.rag }}{% endif %}" href="{{ url_for('scorecard.detail', name=card.name, adom=adom_filter) }}">
     <p class="domain-card-label">{{ card.label }}</p>
     {% if card.score is not none %}
     <div class="domain-card-score">

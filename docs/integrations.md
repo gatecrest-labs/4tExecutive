@@ -60,6 +60,11 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `version_breakdown`           | FortiOS Versions (table)       |
 | `device_review`               | Configuration Posture          |
 | `rule_hygiene`                | Rule Hygiene                   |
+| `psirt`                       | Vulnerability domain score      |
+| `change_control`               | Availability & Change domain rows |
+| `lifecycle`                    | Lifecycle & Support domain score |
+| `by_adom`                       | ADOM filter (Board, Scorecard) |
+| `infra`                        | Infrastructure card (Availability & Change domain page) |
 | `ai_usage_by_feature`         | (detail breakdown for AI Usage)|
 | `device_sweep_status`         | (internal sweep tracking)      |
 | `hygiene_sweep_status`        | (internal sweep tracking)      |
@@ -231,6 +236,144 @@ hygiene-sweep rollup run) containing rule quality metrics:
 }
 ```
 
+`change_control` is a nested object (from 4thealth-plus schema_version 2
+onward; absent on schema_version 1 sources) containing config-drift and
+admin-activity metrics:
+
+```json
+{
+  "change_control": {
+    "devices_out_of_sync": 4,
+    "admin_changes_24h": 12,
+    "admin_changes_by_user": [{"user": "alice", "count": 8}, {"user": "bob", "count": 4}],
+    "collected_at": "2026-09-10T01:00:00Z"
+  }
+}
+```
+
+- `devices_out_of_sync` — device count whose normalized `conf_status` is not `"insync"`; sourced from the same device sweep as `firewall_online_count` (freshness: `device_sweep_collected_at`).
+- `admin_changes_24h` / `admin_changes_by_user` — from a separate hourly FortiManager admin audit-log sweep; `admin_changes_by_user` is the top 5 users by change count, as `[{user, count}]`.
+- `collected_at` — timestamp of that hourly audit-log sweep (not the device sweep — `devices_out_of_sync` tracks `device_sweep_collected_at` instead).
+- **No `oldest_pending_change_days` key.** 4thealth-plus's `dvmdb` device object carries no confirmed per-device modification timestamp; the key is omitted rather than fabricated. See that repo's docs/features.md for the full rationale.
+
+`extract_all()` flattens this into `change_control.devices_out_of_sync` and `change_control.admin_changes_24h` metric_points (`change_control` and `change_control.admin_changes_by_user` are composite and always extract to nothing, same pattern as `psirt`/`psirt.top_advisory`). Both land as rows on the **Availability & Change** domain page (`app/domains.py` `MEMBER_METRICS["availability"]`) and as Trend Board rows (`app/widgets.py`'s `4thealth.devices_out_of_sync` / `4thealth.admin_changes_24h` catalog entries, grouped under "availability" in `app/board.py`'s `WIDGET_DOMAIN`): `devices_out_of_sync` has `direction: "lower"` with RAG green at 0 / amber at 3+; `admin_changes_24h` has `direction: "none"` (informational — no single count is inherently good or bad). Neither is wired into the Availability & Change domain **score** formula, which stays online/managed-count only.
+
+`lifecycle` is a nested object (from 4thealth-plus schema_version 2
+onward; absent on schema_version 1 sources) containing hardware
+end-of-support exposure:
+
+```json
+{
+  "lifecycle": {
+    "devices_hw_eos": 3,
+    "devices_hw_eos_12m": 5,
+    "models_unknown": ["FortiGate-Unicorn"],
+    "collected_at": "2026-09-10T00:00:00Z"
+  }
+}
+```
+
+- `devices_hw_eos` — device count whose hardware platform has already reached end-of-support, per 4thealth-plus's static `app/model_eos.py` table.
+- `devices_hw_eos_12m` — device count reaching (or already past) hardware EOS within the next 12 months; a superset of `devices_hw_eos`.
+- `models_unknown` — distinct platform strings 4thealth-plus's table has no EOS date for — a hardware family it can't yet assess, surfaced rather than silently treated as "not EOS".
+- `collected_at` — same timestamp as `device_sweep_collected_at` (same sweep computes both).
+- **No `device_backup` key.** 4thealth-plus could not confirm the FMG revision-history endpoint needed to compute device configuration backup age against its lab FortiManager — see that repo's `docs/superpowers/specs/2026-09-10-device-backup-age-spike.md`. The `4thealth-plus App Config Backup` widget (renamed from "App Config Backup" to disambiguate) is a placeholder for where `device_backup` fields will sit once that lands — it currently reports 4thealth-plus's own *application* config backup, not device backup.
+
+`extract_all()` flattens this into `lifecycle.devices_hw_eos` and `lifecycle.devices_hw_eos_12m` metric_points (`lifecycle` and `lifecycle.models_unknown` are composite and always extract to nothing). A third derived metric, `devices_on_eol_version`, is computed from `version_breakdown`'s per-version `eol` flags (summing the `count` of every version flagged EOL) rather than read directly off the payload.
+
+These three feed the **Lifecycle & Support** domain score (`app/domains.py`): firmware compliance (`version_compliance_pct`, weight 0.5) + a software-EOL component (`100 − devices_on_eol_version / firewall_managed_count × 100`, weight 0.25) + a hardware-EOS component (`100 − devices_hw_eos / firewall_managed_count × 100`, weight 0.25). Any missing component defaults optimistically to a full-health value (100 for firmware compliance, 0% for the EOL/EOS device shares) rather than penalizing a fleet for data 4thealth-plus hasn't reported yet — the domain scores `None` ("not yet measured") only when none of the three inputs have any data at all. `version_compliance_pct`, `devices_on_eol_version`, `lifecycle.devices_hw_eos`, and `lifecycle.devices_hw_eos_12m` all appear as rows on the Lifecycle & Support domain detail page.
+
+`by_adom` is a nested object (from 4thealth-plus schema_version 2 onward;
+absent on schema_version 1 sources), keyed by ADOM name, each value
+`{firewalls_total, firewall_online_count, version_compliance_pct,
+pending_config_diff_count, devices_with_failures}`:
+
+```json
+{
+  "by_adom": {
+    "Corp": {
+      "firewalls_total": 42,
+      "firewall_online_count": 40,
+      "version_compliance_pct": 92.9,
+      "pending_config_diff_count": 3,
+      "devices_with_failures": 5
+    }
+  }
+}
+```
+
+`extract_all()` flattens each ADOM's fields into `by_adom.<adom>.<field>`
+metric_points (dynamically, like `rule_hygiene.rule_findings_by_type.*`,
+since the set of ADOMs varies) — `by_adom` itself is composite and always
+extracts to nothing. `app.metric_extract.BY_ADOM_FIELD_MAP` maps each
+fleet-wide metric_key (e.g. `firewall_managed_count`) to its by_adom field
+name (`firewalls_total` — note the name differs; that's intentional, not a
+typo) for the metrics that have a per-ADOM breakdown; anything not in that
+map has no per-ADOM equivalent.
+
+This powers an **ADOM filter** on both the Trend Board (`/board?adom=`)
+and the Scorecard (`/?adom=`, and each domain detail page
+`/domain/<name>?adom=`) — persisted in an `adom_filter` cookie the same
+way `compare_to`/`sparkline`/`domain`/`source` already are. When set, every
+row/score/member-metric backed by a by_adom-mapped field reads that ADOM's
+value instead of the fleet-wide one; anything without a per-ADOM
+breakdown (e.g. `hygiene_score`, `psirt.*`, `lifecycle.devices_hw_eos`)
+keeps showing its fleet-wide value regardless of the filter — the UI marks
+which rows are actually ADOM-scoped with a small badge. The Scorecard
+domain-score **trend chart** is always fleet-wide even under a filter,
+since per-ADOM score history isn't tracked (`app/domains.py::
+compute_domain()`'s docstring covers this). The list of known ADOM names
+for the filter dropdown (`app.metrics_db.list_by_adom_names()`) is derived
+from whatever `by_adom.*` metric_points already exist — no separate "list
+ADOMs" call to any source.
+
+`infra` is a nested LIST (from 4thealth-plus schema_version 2 and 4tlog
+onward), one entry per FortiManager/FortiAnalyzer/FortiAuthenticator
+target: `{role, label, hostname, cpu, mem, disk_pct (4thealth-plus) or
+disk_used_pct (4tlog), ha_role, status, last_updated}`. Read directly from
+each enabled source's latest snapshot (`app.domains.get_infra_devices()`)
+rather than through metric_points — it's a per-device list, not a single
+fleet scalar, so there's nothing to extract a scalar metric_key from; this
+card shows "now" status only, no delta or history. `get_infra_devices()`
+merges every enabled `4thealth`/`4tlog` source's `infra` list into one,
+normalizing 4tlog's `disk_used_pct` field name to 4thealth-plus's own
+`disk_pct` and 4tlog's `"yellow"` status value to `"amber"` (4thealth-plus
+and this card's own CSS both use "amber" for that tier), so the merged
+list has one consistent shape regardless of source. Rendered as an
+**Infrastructure card** on the Availability & Change domain detail page
+only (`/domain/availability`) — every other domain page has no infra card.
+
+`psirt` is a nested object (from 4thealth-plus schema_version 2 onward;
+absent on schema_version 1 sources) containing fleet-wide PSIRT advisory
+exposure, computed from that app's persisted advisory/assessment history
+(`app/psirt_store.py`) rather than a per-poll sweep:
+
+```json
+{
+  "psirt": {
+    "open_advisories": 3,
+    "devices_critical": 5,
+    "devices_high": 2,
+    "devices_medium": 0,
+    "devices_critical_mitigated": 1.0,
+    "kev_exposed_devices": 2,
+    "top_advisory": {"advisory_id": "FG-IR-24-001", "cvss": 9.8, "kev": true, "devices": 5},
+    "mean_days_to_remediate_90d": 12.5,
+    "collected_at": "2026-09-10T00:00:00Z"
+  }
+}
+```
+
+- `open_advisories` — advisories saved but not yet closed.
+- `devices_critical` / `devices_high` / `devices_medium` — device counts affected by open advisories in that priority band. A device counts here whether or not a workaround is applied — this is never silently reduced for mitigation.
+- `devices_critical_mitigated` — critical-band devices with a confirmed workaround in place, counted **at half weight** (e.g. `1.0` = 2 devices). A separate field on purpose, so it can never be used to silently shrink `devices_critical`.
+- `kev_exposed_devices` — distinct devices affected by any open advisory listed in the CISA KEV catalog.
+- `top_advisory` — the single highest-priority open advisory (ties broken by CVSS, then device count); `null` if none are open.
+- `mean_days_to_remediate_90d` — mean days between an advisory being first saved and closed, over closures in the trailing 90 days; `null` if none closed in that window.
+- `collected_at` — ISO 8601 timestamp of when the source computed this rollup (computed fresh on each request, not cached, so it tracks the poll time rather than a sweep cadence).
+
+`extract_all()` (`app/metric_extract.py`) flattens this into `psirt.open_advisories`, `psirt.devices_critical`, `psirt.devices_high`, `psirt.devices_medium`, `psirt.devices_critical_mitigated`, `psirt.kev_exposed_devices`, and `psirt.mean_days_to_remediate_90d` metric_points; `psirt` and `psirt.top_advisory` themselves are composite objects with no single scalar and always extract to nothing. The **Vulnerability** domain score (`app/domains.py`) is built entirely from these fields: start at 100, subtract 20 per device that is either KEV-listed or in the critical band (capped at 60), 3 per high-band device (capped at 30), and 1 per medium-band device (capped at 10) — then floor the grade to **F** whenever `kev_exposed_devices > 0`, regardless of the numeric score, since a single actively-tracked KEV exposure is an escalation a passing letter grade should never mask.
+
 `ai_usage_by_feature` is an optional nested object (present only if AI usage
 data is available, keyed by feature name) containing per-feature cost and usage
 breakdown:
@@ -256,8 +399,11 @@ These `*_collected_at` timestamps reflect when each respective job last complete
 `schema_version` — optional integer field indicating the contract version of the
 payload structure. Sources may omit this field (default assumes latest version
 compatible with 4tExecutive). Included for future API evolution scenarios.
+4thealth-plus is on `schema_version: 2` as of the `psirt` field's introduction —
+the bump is additive (every `1` key is still present), so 4tExecutive accepts
+either version and simply has no `psirt` data to show from a `1` source.
 
-Along with `version_breakdown`, `device_review`, `rule_hygiene`, and `ai_usage_24h`,
+Along with `version_breakdown`, `device_review`, `rule_hygiene`, `psirt`, `change_control`, `lifecycle`, `by_adom`, `infra`, and `ai_usage_24h`,
 these nested and collection-tracking fields form the complete contract; every other
 field above is a scalar.
 

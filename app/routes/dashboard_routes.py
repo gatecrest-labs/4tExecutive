@@ -12,7 +12,7 @@ from app.decorators import tab_required
 from app.domains import DOMAINS
 from app.events import positioned_ticks
 from app.layouts import get_layout, save_layout
-from app.metrics_db import get_events
+from app.metrics_db import get_events, list_by_adom_names
 from app.sources import list_sources
 from app.widgets import (
     BASELINES,
@@ -65,11 +65,26 @@ def _resolve_sort() -> str:
     return sort if sort in SORT_KEYS else DEFAULT_SORT
 
 
+def _resolve_adom_filter() -> str | None:
+    """"?adom=" (or its cookie) filters the Board to one ADOM's per-ADOM
+    values for the metrics that have them (see app.metric_extract.
+    BY_ADOM_FIELD_MAP) — not restricted to a fixed enum since the set of
+    known ADOMs itself comes from list_by_adom_names(), an empty string
+    (the "All" option) always clears the filter."""
+    adom = request.args.get("adom")
+    if adom is None:
+        adom = request.cookies.get("adom_filter")
+    if not adom:
+        return None
+    return adom if adom in list_by_adom_names() else None
+
+
 def _board_context():
     compare_to = _resolve_compare_to()
     sparkline = _resolve_sparkline()
     domain_filter = _resolve_domain_filter()
     source_filter = _resolve_source_filter()
+    adom_filter = _resolve_adom_filter()
     sort = _resolve_sort()
     rows = build_rows(
         compare_to=compare_to,
@@ -77,6 +92,7 @@ def _board_context():
         domain_filter=domain_filter,
         source_filter=source_filter,
         sort=sort,
+        adom=adom_filter,
     )
     since = (datetime.now(UTC) - SPARKLINE_WINDOWS[sparkline]).strftime("%Y-%m-%dT%H:%M:%SZ")
     events = get_events(since=since)
@@ -89,6 +105,7 @@ def _board_context():
         "sparkline": sparkline,
         "domain_filter": domain_filter,
         "source_filter": source_filter,
+        "adom_filter": adom_filter,
         "sort": sort,
     }
 
@@ -100,6 +117,11 @@ def _set_board_cookies(response) -> None:
         response.set_cookie("domain_filter", request.args["domain"], max_age=60 * 60 * 24 * 365, samesite="Lax")
     if request.args.get("source"):
         response.set_cookie("source_filter", request.args["source"], max_age=60 * 60 * 24 * 365, samesite="Lax")
+    if "adom" in request.args:
+        if request.args["adom"]:
+            response.set_cookie("adom_filter", request.args["adom"], max_age=60 * 60 * 24 * 365, samesite="Lax")
+        else:
+            response.delete_cookie("adom_filter")
 
 
 @bp.route("/board")
@@ -113,6 +135,7 @@ def index():
             **context,
             domains=domains,
             sources=list_sources(),
+            adoms=list_by_adom_names(),
         )
     )
     _set_board_cookies(response)
