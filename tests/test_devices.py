@@ -90,7 +90,7 @@ def test_get_domain_devices_hygiene_uses_package_field():
     write_snapshot(
         "s1",
         "summary",
-        {"rule_hygiene": {"details": [{"package": "pkg1", "adom": "Corp", "findings": 3}]}},
+        {"rule_hygiene": {"details": [{"package": "pkg1", "adom": "Corp", "findings": [{}, {}, {}]}]}},
         _iso(5),
     )
 
@@ -143,7 +143,7 @@ def test_get_domain_devices_logging_reads_silent_devices():
     write_snapshot(
         "s1",
         "summary",
-        {"silent_devices": [{"devid": "1", "devname": "fw-silent", "last_log_at": "2026-09-01T00:00:00Z"}]},
+        {"devices_silent_details": [{"devid": "1", "devname": "fw-silent", "last_log_at": "2026-09-01T00:00:00Z"}]},
         _iso(5),
     )
 
@@ -152,6 +152,21 @@ def test_get_domain_devices_logging_reads_silent_devices():
     assert rows[0]["device_label"] == "fw-silent"
     assert "last log" in rows[0]["detail_text"]
     assert rows[0].get("adom") is None
+
+
+def test_get_domain_devices_logging_renders_missing_last_log_at_gracefully():
+    _add_source("s1", "4tlog")
+    write_snapshot(
+        "s1",
+        "summary",
+        {"devices_silent_details": [{"devid": "1", "devname": "fw-silent", "last_log_at": None}]},
+        _iso(5),
+    )
+
+    rows = get_domain_devices("logging")
+
+    assert rows[0]["detail_text"] == "no recent logs"
+    assert "None" not in rows[0]["detail_text"]
 
 
 def test_get_domain_devices_vulnerability_reads_top_advisory_devices():
@@ -256,14 +271,14 @@ def test_get_fleet_devices_merges_multiple_categories_for_one_device_and_separat
             "device_review": {
                 "details": [{"device": "fw1", "adom": "Corp", "failed_checks": ["a"], "worst_severity": "high"}]
             },
-            "rule_hygiene": {"details": [{"package": "fw1", "adom": "Corp", "findings": 4}]},
+            "rule_hygiene": {"details": [{"package": "fw1", "adom": "Corp", "findings": [{}, {}, {}, {}]}]},
         },
         _iso(5),
     )
     write_snapshot(
         "s2",
         "summary",
-        {"silent_devices": [{"devid": "9", "devname": "fw-silent", "last_log_at": "2026-09-01T00:00:00Z"}]},
+        {"devices_silent_details": [{"devid": "9", "devname": "fw-silent", "last_log_at": "2026-09-01T00:00:00Z"}]},
         _iso(5),
     )
 
