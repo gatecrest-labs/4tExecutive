@@ -4,6 +4,8 @@ from app import metrics_db
 from app.metrics_db import (
     clear_poll_error,
     downsample_metric_points,
+    get_brief_asks,
+    get_brief_sends,
     get_events,
     get_history,
     get_last_polled,
@@ -13,12 +15,14 @@ from app.metrics_db import (
     get_metric_series,
     get_poll_error,
     init_db,
+    insert_brief_send,
     insert_event,
     insert_metric_points,
     iter_all_snapshots,
     list_by_adom_names,
     prune_metric_points_older_than,
     prune_snapshots_older_than,
+    save_brief_asks,
     save_layout,
     set_last_polled,
     set_poll_error,
@@ -285,3 +289,39 @@ def test_list_by_adom_names_returns_distinct_sorted_names():
 def test_list_by_adom_names_empty_when_none_present():
     insert_metric_points("s1", "2026-09-10T00:00:00Z", {"hygiene_score": 90.0})
     assert list_by_adom_names() == []
+
+
+def test_get_brief_asks_empty_when_no_row():
+    assert get_brief_asks("2026-W37") == []
+
+
+def test_save_brief_asks_then_get_round_trips():
+    save_brief_asks("2026-W37", ["Approve upgrade window", "Budget for replacements"], "alice")
+
+    assert get_brief_asks("2026-W37") == ["Approve upgrade window", "Budget for replacements"]
+
+
+def test_save_brief_asks_upserts_same_week():
+    save_brief_asks("2026-W37", ["first draft"], "alice")
+    save_brief_asks("2026-W37", ["revised ask"], "bob")
+
+    assert get_brief_asks("2026-W37") == ["revised ask"]
+
+
+def test_insert_brief_send_then_get_brief_sends_most_recent_first():
+    insert_brief_send("2026-W36", "2026-09-07T08:00:00Z", "a@x.com", "sent")
+    insert_brief_send("2026-W37", "2026-09-14T08:00:00Z", "a@x.com,b@x.com", "failed", error="smtp timeout")
+
+    sends = get_brief_sends()
+
+    assert [s["week_key"] for s in sends] == ["2026-W37", "2026-W36"]
+    assert sends[0]["status"] == "failed"
+    assert sends[0]["error"] == "smtp timeout"
+    assert sends[1]["error"] is None
+
+
+def test_get_brief_sends_respects_limit():
+    for i in range(3):
+        insert_brief_send(f"2026-W{30 + i}", "2026-09-07T08:00:00Z", "a@x.com", "sent")
+
+    assert len(get_brief_sends(limit=2)) == 2

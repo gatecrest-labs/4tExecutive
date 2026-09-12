@@ -10,6 +10,7 @@
   <button type="button" class="admin-tab{% if active_panel == 'settings' %} active{% endif %}" data-panel="settings">Settings</button>
   <button type="button" class="admin-tab{% if active_panel == 'scoring' %} active{% endif %}" data-panel="scoring">Scoring</button>
   <button type="button" class="admin-tab{% if active_panel == 'system' %} active{% endif %}" data-panel="system">System</button>
+  <button type="button" class="admin-tab{% if active_panel == 'reports' %} active{% endif %}" data-panel="reports">Reports</button>
 </div>
 
 <!-- ═══════════════════════  SOURCES PANEL  ═══════════════════════ -->
@@ -220,6 +221,98 @@
         <div id="hmDiskChart" class="hm-chart"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════  REPORTS PANEL  ═══════════════════════ -->
+<div class="admin-panel{% if active_panel == 'reports' %} active{% endif %}" id="panel-reports">
+  <div class="admin-panel-header">
+    <h3>Reports</h3>
+  </div>
+
+  {% if reports_error %}<div class="alert alert-danger">{{ reports_error }}</div>{% endif %}
+  {% if reports_message %}<div class="alert alert-success">{{ reports_message }}</div>{% endif %}
+
+  <h3>SMTP settings</h3>
+  <p class="text-muted" style="font-size:.85rem">
+    Used to email the Weekly Executive Brief. The password is encrypted at
+    rest and never shown back here &mdash; leave it blank to keep the
+    currently stored password.
+  </p>
+  <form method="post" action="{{ url_for('admin.update_smtp_route') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group"><label for="smtp-host">Host</label><input class="form-control" id="smtp-host" name="host" value="{{ smtp_config.host }}"></div>
+    <div class="form-group"><label for="smtp-port">Port</label><input class="form-control" id="smtp-port" name="port" value="{{ smtp_config.port }}"></div>
+    <div class="form-group">
+      <label for="smtp-tls">TLS mode</label>
+      <select class="form-select" id="smtp-tls" name="tls_mode">
+        {% for mode in ["none", "starttls", "ssl"] %}
+        <option value="{{ mode }}" {% if smtp_config.tls_mode == mode %}selected{% endif %}>{{ mode }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group"><label for="smtp-username">Username</label><input class="form-control" id="smtp-username" name="username" value="{{ smtp_config.username }}"></div>
+    <div class="form-group">
+      <label for="smtp-password">Password</label>
+      <input class="form-control" id="smtp-password" name="password" type="password" placeholder="(unchanged)">
+    </div>
+    <div class="form-group"><label for="smtp-from">From address</label><input class="form-control" id="smtp-from" name="from_address" value="{{ smtp_config.from_address }}"></div>
+    <div class="form-group">
+      <label><input type="checkbox" name="enabled" {% if smtp_config.enabled %}checked{% endif %}> Enabled</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Save SMTP settings</button>
+  </form>
+
+  <h3 class="mt-1">Weekly send schedule</h3>
+  <p class="text-muted" style="font-size:.85rem">
+    Takes effect on the next app restart &mdash; like the rest of this app's
+    scheduled jobs, the schedule isn't hot-reloaded while the app is running.
+  </p>
+  <form method="post" action="{{ url_for('admin.update_brief_schedule_route') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="brief-weekday">Day of week</label>
+      <select class="form-select" id="brief-weekday" name="weekday">
+        {% for idx, label in [(0, "Monday"), (1, "Tuesday"), (2, "Wednesday"), (3, "Thursday"), (4, "Friday"), (5, "Saturday"), (6, "Sunday")] %}
+        <option value="{{ idx }}" {% if schedule_config.weekday == idx %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group"><label for="brief-hour">Hour (0-23, UTC)</label><input class="form-control" id="brief-hour" name="hour" value="{{ schedule_config.hour }}"></div>
+    <div class="form-group"><label for="brief-recipients">Recipients (comma-separated)</label><input class="form-control" id="brief-recipients" name="recipients" value="{{ schedule_config.recipients }}"></div>
+    <div class="form-group">
+      <label><input type="checkbox" name="enabled" {% if schedule_config.enabled %}checked{% endif %}> Enabled</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Save schedule</button>
+  </form>
+
+  <h3 class="mt-1">Send test</h3>
+  <form method="post" action="{{ url_for('admin.send_test_brief_route') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group"><label for="test-to">Send today's brief to</label><input class="form-control" id="test-to" name="to_address" placeholder="you@example.com"></div>
+    <button class="btn btn-secondary" type="submit">Send test</button>
+  </form>
+
+  <h3 class="mt-1">Send history</h3>
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead><tr><th>Week</th><th>Sent at</th><th>Recipients</th><th>Status</th><th>Error</th><th></th></tr></thead>
+      <tbody>
+        {% for send in brief_sends %}
+        <tr>
+          <td>{{ send.week_key }}</td>
+          <td>{{ send.sent_at }}</td>
+          <td>{{ send.recipients }}</td>
+          <td>{{ send.status }}</td>
+          <td>{{ send.error or "" }}</td>
+          <td>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.download_brief_send_route', send_id=send.id, ext='html') }}">HTML</a>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.download_brief_send_route', send_id=send.id, ext='pdf') }}">PDF</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endblock %}

@@ -96,6 +96,10 @@ def create_app(
 
     flask_app.register_blueprint(scorecard_bp)
 
+    from app.routes.brief_routes import bp as brief_bp
+
+    flask_app.register_blueprint(brief_bp)
+
     from app.routes.admin_routes import bp as admin_bp
 
     flask_app.register_blueprint(admin_bp)

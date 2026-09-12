@@ -87,4 +87,42 @@
 <h2>How this score is computed</h2>
 <p class="domain-detail-explanation">{{ domain.explanation }}</p>
 {% endif %}
+
+{% if devices %}
+<div class="devices-section">
+  <h2>Devices</h2>
+  <div class="devices-controls">
+    <input type="search" id="domainDevicesFilter" class="devices-filter" placeholder="Filter devices…" oninput="fourtDeviceFilter('domainDevicesFilter', 'domainDevicesTable')">
+    <a class="board-csv-link" href="{{ url_for('scorecard.domain_devices_csv', name=domain.name) }}">Export CSV</a>
+  </div>
+  <table class="widget-table devices-table" id="domainDevicesTable">
+    <thead>
+      <tr><th>Device</th><th>ADOM</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+    {% for row in devices %}
+      <tr>
+        <td>{{ row.device_label or '—' }}</td>
+        <td>{{ row.adom or '—' }}</td>
+        <td>{{ row.detail_text or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  function fourtDeviceFilter(inputId, tableId) {
+    var input = document.getElementById(inputId);
+    var table = document.getElementById(tableId);
+    var needle = input.value.toLowerCase();
+    var rows = table.querySelectorAll('tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var text = rows[i].textContent.toLowerCase();
+      rows[i].hidden = needle.length > 0 && text.indexOf(needle) === -1;
+    }
+  }
+</script>
 {% endblock %}

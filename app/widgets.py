@@ -64,6 +64,49 @@ _FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
 }
 
 
+def _freshness_collected_at(value: dict, key: str) -> str | None:
+    """Find the field group's collected_at timestamp, accepting both schema
+    v1 and v2 payload shapes (see sibling repos 4thealth-plus/4tlog's
+    schema_version: 2 migration, which adds a top-level "freshness" map
+    alongside all existing v1 keys).
+
+    Lookup order:
+    1. schema_version 2 with a "freshness" dict: try freshness[key], then
+       freshness[key without a trailing "_collected_at"] (sibling repos may
+       key the freshness map by the bare group name).
+    2. Otherwise (schema_version 1/absent, freshness missing/not a dict, or
+       both v2 lookups above missed): today's v1 behavior -- value[key],
+       with the device_review special case (value["device_review"]["collected_at"])
+       tried last, before giving up and returning None.
+
+    Never raises on malformed input -- degrades to None.
+    """
+    if not isinstance(value, dict):
+        return None
+
+    if value.get("schema_version") == 2:
+        freshness = value.get("freshness")
+        if isinstance(freshness, dict):
+            candidate = freshness.get(key)
+            if candidate is None:
+                candidate = freshness.get(key.removesuffix("_collected_at"))
+            if candidate is not None:
+                return candidate
+
+    if key != "device_review":
+        candidate = value.get(key)
+        if candidate is not None:
+            return candidate
+
+    device_review = value.get("device_review")
+    if isinstance(device_review, dict):
+        candidate = device_review.get("collected_at")
+        if candidate is not None:
+            return candidate
+
+    return None
+
+
 def _is_stale(value: dict, widget_type: str) -> bool | None:
     """Return whether the widget type's underlying field group is stale, or
     None if this widget type has no known field-group freshness key."""
@@ -71,15 +114,12 @@ def _is_stale(value: dict, widget_type: str) -> bool | None:
     if freshness_key is None:
         return None
     key, threshold_minutes = freshness_key
-    if key == "device_review":
-        collected_at = (value.get("device_review") or {}).get("collected_at")
-    else:
-        collected_at = value.get(key)
+    collected_at = _freshness_collected_at(value, key)
     if not collected_at:
         return None
     try:
         collected_dt = datetime.fromisoformat(collected_at)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
     age_minutes = (datetime.now(UTC) - collected_dt).total_seconds() / 60
     return age_minutes > threshold_minutes

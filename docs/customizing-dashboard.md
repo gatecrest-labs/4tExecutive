@@ -157,6 +157,56 @@ within a tab (e.g. "can manage sources" vs. "can manage users" are both just
 `admin`); see [architecture.md](architecture.md) if you need to split that
 out.
 
+`allowed_tabs` is an open-ended list of plain strings, not a fixed enum —
+there is no admin UI anywhere in this app for editing a group's
+`allowed_tabs` (confirmed by grep; every existing tab, including
+`dashboard` and `admin`, is granted by hand-editing `config/groups.json`,
+not through a checkbox in the UI). Granting the two tabs the Weekly
+Executive Brief introduces — `brief` (view `/brief`) and `brief_edit` (edit
+the "asks for leadership" list via `POST /brief/asks`) — works exactly the
+same way: add the string to a group's `allowed_tabs` array and save the
+file (the app reads it fresh on each request, no restart needed). For
+example, to let an "executives" group view the brief, and let a separate
+smaller "leadership" group also edit its asks list:
+
+```json
+{
+  "executives": {
+    "members": ["admin", "cfo"],
+    "allowed_tabs": ["dashboard", "brief"]
+  },
+  "leadership": {
+    "members": ["cfo"],
+    "allowed_tabs": ["dashboard", "brief", "brief_edit"]
+  }
+}
+```
+
+A user only needs `brief` to view the page; `brief_edit` is checked
+separately (`user_has_tab(username, "brief_edit")`) to decide whether
+`brief.html` shows the asks list read-only or with an edit form — a user
+can have `brief_edit` without `brief`, but since `/brief` itself is gated on
+`brief`, grant both together in practice.
+
+## Admin > Reports (SMTP + weekly brief schedule)
+
+Admin's Reports panel (gated by the existing `admin` tab, same as every
+other Admin panel — no new tab for this one) configures the Weekly
+Executive Brief's delivery: an SMTP settings form (`config/smtp.json`, saved
+via `app/smtp_client.py`; the password field never round-trips the
+decrypted secret back into the rendered `<input>` — it shows a blank field
+with a `placeholder="(unchanged)"`, the same convention `app/sources.py`'s
+token field already uses, and only overwrites the stored password when you
+submit a non-empty value), a schedule form (weekday/hour/recipients/enabled,
+`config/brief_schedule.json` via `app/brief_schedule.py`), a "Send test"
+button (builds today's brief for real and emails it to one address), and a
+history table of past sends (`brief_sends`) with HTML/PDF download links.
+
+The schedule config is read once at scheduler startup (see
+[architecture.md](architecture.md#weekly-executive-brief)) — like the
+collector's other fixed-interval jobs, changing weekday/hour/enabled here
+takes effect on the app's next restart, not immediately.
+
 ## The Trend Board's row universe
 
 `GET /board` (`app/board.py`) is a **fixed, comprehensive** board, not a

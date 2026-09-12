@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="devices-section">
+  <h1>Fleet Devices</h1>
+  <div class="devices-controls">
+    <input type="search" id="fleetDevicesFilter" class="devices-filter" placeholder="Filter devices…" oninput="fourtDeviceFilter('fleetDevicesFilter', 'fleetDevicesTable')">
+    <a class="board-csv-link" href="{{ url_for('scorecard.devices_csv') }}">Export CSV</a>
+  </div>
+  {% if rows %}
+  <table class="widget-table devices-table" id="fleetDevicesTable">
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th>ADOM</th>
+        <th>Posture</th>
+        <th>Hygiene</th>
+        <th>EOL</th>
+        <th>Silent</th>
+        <th>PSIRT</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.device or '—' }}</td>
+        <td>{{ row.adom or '—' }}</td>
+        <td>{{ row.posture or '—' }}</td>
+        <td>{{ row.hygiene or '—' }}</td>
+        <td>{{ row.eol or '—' }}</td>
+        <td>{{ row.silent or '—' }}</td>
+        <td>{{ row.vulnerability or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="scorecard-not-measured">No devices reported yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function fourtDeviceFilter(inputId, tableId) {
+    var input = document.getElementById(inputId);
+    var table = document.getElementById(tableId);
+    var needle = input.value.toLowerCase();
+    var rows = table.querySelectorAll('tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var text = rows[i].textContent.toLowerCase();
+      rows[i].hidden = needle.length > 0 && text.indexOf(needle) === -1;
+    }
+  }
+</script>
+{% endblock %}
