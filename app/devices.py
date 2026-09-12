@@ -53,7 +53,9 @@ def _rows_hygiene(value: dict) -> list[dict]:
         if not isinstance(entry, dict):
             continue
         row = dict(entry)
-        row["detail_text"] = f"{entry.get('findings')} findings"
+        # 4thealth-plus's rule_hygiene.details[].findings is a list of
+        # finding objects (policy_id, check, detail, ...), not a count.
+        row["detail_text"] = f"{len(_as_list(entry.get('findings')))} findings"
         rows.append(row)
     return rows
 
@@ -75,12 +77,20 @@ def _rows_lifecycle(value: dict) -> list[dict]:
 
 
 def _rows_logging(value: dict) -> list[dict]:
+    # 4tlog's executive-summary payload exposes this list as
+    # "devices_silent_details" (see 4tlog's app/log_stats_cache.py
+    # build_silent_details()), not "silent_devices".
     rows = []
-    for entry in _as_list(value.get("silent_devices")):
+    for entry in _as_list(value.get("devices_silent_details")):
         if not isinstance(entry, dict):
             continue
         row = dict(entry)
-        row["detail_text"] = f"last log {entry.get('last_log_at')}"
+        last_log_at = entry.get("last_log_at")
+        # 4tlog's devices_silent_details currently always sends
+        # last_log_at: null (see that repo's silent-devices-proxy-spike
+        # doc) — render that as "no recent logs" rather than the literal
+        # string "None".
+        row["detail_text"] = f"last log {last_log_at}" if last_log_at else "no recent logs"
         rows.append(row)
     return rows
 
