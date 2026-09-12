@@ -26,7 +26,12 @@ from datetime import UTC, datetime
 from app.atomic_io import atomic_write_json, read_json
 from app.config_paths import CONFIG_DIR
 from app.metric_extract import by_adom_metric_key
-from app.metrics_db import get_last_polled, get_latest, get_metric_latest_at_or_before, insert_metric_points
+from app.metrics_db import (
+    get_last_polled,
+    get_latest,
+    get_metric_latest_at_or_before,
+    insert_metric_points,
+)
 from app.sources import list_sources
 from app.thresholds import get_thresholds
 from app.widgets import WIDGET_CATALOG, baseline_cutoff, rag_state
