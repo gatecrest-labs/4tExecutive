@@ -3,6 +3,14 @@
 {% block content %}
 <div class="board-header">
   <h1>Metrics Board</h1>
+  <p class="board-freshness">
+    {{ now_iso | local_time }}
+    &middot; {{ metrics_count }} metric{{ 's' if metrics_count != 1 else '' }}
+    &middot; {{ freshness.source_count }} source{{ 's' if freshness.source_count != 1 else '' }}
+    {% if freshness.oldest_minutes is not none %}
+      &middot; <span class="{% if freshness.stale %}posture-stale{% endif %}">{{ 'data may be stale' if freshness.stale else 'data current' }} (oldest {{ freshness.oldest_minutes }} min)</span>
+    {% endif %}
+  </p>
 </div>
 
 <form method="get" class="board-controls" id="boardControls">
@@ -59,6 +67,7 @@
 </div>
 
 {% set ns = namespace(current_domain=none) %}
+<div class="board-table-wrap">
 <table class="board-table">
   <thead>
     <tr>
@@ -111,6 +120,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 <p class="board-legend">Arrow shows the direction of change (up/down); color shows whether that's better or worse for this metric — green is better, red is worse, gray means this metric has no defined direction.</p>
 {% endblock %}

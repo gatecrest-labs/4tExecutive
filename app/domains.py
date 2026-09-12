@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from app.atomic_io import atomic_write_json, read_json
 from app.config_paths import CONFIG_DIR
 from app.metric_extract import by_adom_metric_key
-from app.metrics_db import get_latest, get_metric_latest_at_or_before, insert_metric_points
+from app.metrics_db import get_last_polled, get_latest, get_metric_latest_at_or_before, insert_metric_points
 from app.sources import list_sources
 from app.thresholds import get_thresholds
 from app.widgets import WIDGET_CATALOG, baseline_cutoff, rag_state
@@ -600,6 +600,36 @@ def _metric_rag(metric_key: str, value: float | None) -> str | None:
             if thresholds is not None:
                 return rag_state(value, thresholds)
     return None
+
+
+FRESHNESS_STALE_AFTER_MINUTES = 60
+
+
+def fleet_freshness(now: datetime | None = None) -> dict:
+    """Source count and poll recency for the scorecard/board header line
+    (design-c/-d mockups' "Sep 10, 08:42 CT · data current (oldest 12 min)").
+
+    "Oldest" is the least-recently-polled *enabled* source, i.e. the
+    worst-case age of any number on the page right now -- not an average,
+    since a director reading "data current" wants that to mean *every*
+    source is current, not just most of them.
+    """
+    now = now or datetime.now(UTC)
+    enabled = [s for s in list_sources() if s.get("enabled", True)]
+    polled_ats = [ts for ts in (get_last_polled(s["id"]) for s in enabled) if ts]
+    oldest_iso = min(polled_ats) if polled_ats else None
+    oldest_minutes = None
+    if oldest_iso:
+        oldest_dt = datetime.fromisoformat(oldest_iso)
+        if oldest_dt.tzinfo is None:
+            oldest_dt = oldest_dt.replace(tzinfo=UTC)
+        oldest_minutes = max(0, round((now - oldest_dt).total_seconds() / 60))
+    return {
+        "source_count": len(enabled),
+        "oldest_collected_at": oldest_iso,
+        "oldest_minutes": oldest_minutes,
+        "stale": oldest_minutes is not None and oldest_minutes > FRESHNESS_STALE_AFTER_MINUTES,
+    }
 
 
 def get_infra_devices() -> list[dict]:
