@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "metrics.db"
@@ -73,6 +74,28 @@ def init_db() -> None:
                 severity TEXT NOT NULL,
                 title TEXT NOT NULL,
                 detail TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS briefs (
+                week_key TEXT PRIMARY KEY,
+                asks JSON,
+                updated_at TEXT,
+                updated_by TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS brief_sends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                week_key TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                recipients TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT
             )
             """
         )
@@ -317,6 +340,52 @@ def get_events(since: str) -> list[dict]:
             "severity": row[5],
             "title": row[6],
             "detail": json.loads(row[7]),
+        }
+        for row in rows
+    ]
+
+
+def get_brief_asks(week_key: str) -> list[str]:
+    with _connect() as conn:
+        row = conn.execute("SELECT asks FROM briefs WHERE week_key = ?", (week_key,)).fetchone()
+    return json.loads(row[0]) if row and row[0] else []
+
+
+def save_brief_asks(week_key: str, asks: list[str], updated_by: str) -> None:
+    updated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO briefs (week_key, asks, updated_at, updated_by) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(week_key) DO UPDATE SET asks = excluded.asks, "
+            "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+            (week_key, json.dumps(asks), updated_at, updated_by),
+        )
+
+
+def insert_brief_send(week_key: str, sent_at: str, recipients: str, status: str, error: str | None = None) -> int:
+    with _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO brief_sends (week_key, sent_at, recipients, status, error) VALUES (?, ?, ?, ?, ?)",
+            (week_key, sent_at, recipients, status, error),
+        )
+        return cursor.lastrowid
+
+
+def get_brief_sends(limit: int = 50) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, week_key, sent_at, recipients, status, error FROM brief_sends "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "week_key": row[1],
+            "sent_at": row[2],
+            "recipients": row[3],
+            "status": row[4],
+            "error": row[5],
         }
         for row in rows
     ]
