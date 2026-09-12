@@ -1,0 +1,195 @@
+{#
+Self-contained rendering of the Executive Brief for email/PDF delivery
+(app.brief_send.send_weekly_brief). Deliberately NOT `{% extends "base.html" %}`
+like app/templates/brief.html -- base.html pulls in the app's nav (which
+needs a logged-in session) and links app.css externally
+(`<link href="{{ url_for('static', ...) }}">`), which won't resolve for an
+emailed HTML file or a PDF rendered with no server context. This template
+inlines the small brief-relevant CSS subset instead, and always renders the
+asks list read-only (no edit form -- there's no session to attribute an
+edit to in an emailed/printed snapshot).
+#}
+{% import "_charts.html" as charts %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly Executive Brief -- {{ brief.week_start.strftime('%b %-d') }}-{{ brief.week_end.strftime('%b %-d, %Y') }}</title>
+<style>
+  :root {
+    --surface: #ffffff; --surface-alt: #eef1f5; --border: #d0d7e2; --text: #1a2233;
+    --text-muted: #5a6478; --accent: #1976d2; --surface-border: #dfe3ea; --accent-fg: #ffffff;
+    --status-ok: #1a7f37; --status-amber: #b8860b; --status-failed: #b00020; --status-pending: #8a939c;
+  }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: var(--surface); color: var(--text); margin: 0; padding: 1.5rem; }
+  h1, h2, h3 { margin: 0 0 .4rem; }
+  .brief-meta { color: var(--text-muted); font-size: .85rem; margin: 0 0 1rem; }
+  .brief-status-line { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: baseline; padding: .75rem 1rem; border-left: 4px solid var(--status-pending); background: var(--surface-alt); border-radius: 6px; margin-bottom: 1.25rem; }
+  .brief-status-line.brief-status-good { border-left-color: var(--status-ok); }
+  .brief-status-line.brief-status-warn { border-left-color: var(--status-amber); }
+  .brief-status-line.brief-status-crit { border-left-color: var(--status-failed); }
+  .brief-status-word { font-weight: 700; }
+  .brief-status-good .brief-status-word { color: var(--status-ok); }
+  .brief-status-warn .brief-status-word { color: var(--status-amber); }
+  .brief-status-crit .brief-status-word { color: var(--status-failed); }
+  .brief-status-fresh { color: var(--text-muted); font-size: .8rem; margin-left: auto; }
+  .brief-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  .brief-tile { background: var(--surface); border: 1px solid var(--surface-border); border-radius: 10px; padding: .8rem .9rem; }
+  .rag-green { border-left: 4px solid var(--status-ok); }
+  .rag-amber { border-left: 4px solid var(--status-amber); }
+  .rag-red { border-left: 4px solid var(--status-failed); }
+  .rag-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .rag-dot.rag-green { background: var(--status-ok); border: none; }
+  .rag-dot.rag-amber { background: var(--status-amber); border: none; }
+  .rag-dot.rag-red { background: var(--status-failed); border: none; }
+  .brief-tile-label { font-size: .72rem; color: var(--text-muted); display: flex; justify-content: space-between; margin: 0; }
+  .brief-tile-value { font-size: 1.5rem; font-weight: 800; margin: .3rem 0 .1rem; }
+  .brief-tile-value small { font-size: .74rem; color: var(--text-muted); font-weight: 500; }
+  .brief-tile-delta { font-size: .74rem; color: var(--text-muted); margin: 0; }
+  .brief-delta-good { color: var(--status-ok); font-weight: 600; }
+  .brief-delta-bad { color: var(--status-failed); font-weight: 600; }
+  .brief-section-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 1.75rem 0 .6rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  .brief-chip { font-size: .68rem; background: var(--surface-alt); color: var(--text-muted); padding: .1rem .5rem; border-radius: 999px; }
+  .brief-two-col { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1rem; }
+  .brief-three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .panel { background: var(--surface); border: 1px solid var(--surface-border); border-radius: 10px; padding: 1rem 1.1rem; }
+  .panel h3 { margin: 0 0 .5rem; font-size: .95rem; }
+  .brief-decisions-list, .brief-kv-list, .asks { list-style: none; margin: 0; padding: 0; font-size: .82rem; }
+  .brief-decision-item, .brief-kv-list li, .asks li { padding: .4rem 0; border-bottom: 1px solid var(--border); }
+  .brief-decision-item:last-child, .brief-kv-list li:last-child, .asks li:last-child { border-bottom: none; }
+  .brief-decision-title { margin: 0 0 .2rem; font-weight: 700; font-size: .88rem; }
+  .brief-decision-meta { margin: 0 0 .3rem; font-size: .74rem; color: var(--text-muted); }
+  .brief-decision-detail-row { display: flex; justify-content: space-between; gap: .5rem; font-size: .78rem; }
+  .brief-decision-detail-row dt { color: var(--text-muted); }
+  .brief-decision-detail-row dd { margin: 0; }
+  .what-changed-severity { font-size: .7rem; font-weight: 600; padding: 0 .35rem; border-radius: 4px; color: #fff; }
+  .what-changed-critical { background: var(--status-failed); }
+  .what-changed-warning { background: var(--status-amber); }
+  .what-changed-info { background: var(--status-pending); }
+  .what-changed-empty { color: var(--text-muted); font-style: italic; font-size: .82rem; }
+  .brief-flag { display: inline-block; font-size: .64rem; font-weight: 700; padding: .05rem .35rem; border-radius: 4px; color: #fff; margin-left: .25rem; }
+  .brief-flag-crit { background: var(--status-failed); }
+  .brief-lede { margin: 0 0 .6rem; color: var(--text-muted); font-size: .84rem; }
+  .chart-svg { width: 100%; height: auto; display: block; }
+  .chart-target-label, .chart-direct-label, .chart-empty-label { font-size: 9px; fill: var(--text-muted); }
+  .chart-empty-label { font-size: 12px; text-anchor: middle; }
+  .chart-event-tick { fill: var(--status-amber); }
+</style>
+</head>
+<body>
+<div class="brief">
+  <div class="brief-masthead">
+    <h1>Weekly Executive Brief</h1>
+    <p class="brief-meta">Week of {{ brief.week_start.strftime('%b %-d') }} &ndash; {{ brief.week_end.strftime('%b %-d, %Y') }} &middot; generated {{ brief.generated_at.strftime('%H:%M') }} UTC &middot; compared with prior 7 days</p>
+  </div>
+
+  <div class="brief-status-line brief-status-{{ brief.status_class }}">
+    <span class="brief-status-word">{{ brief.status_word }}</span>
+    <span class="brief-status-text">{{ brief.status_sentence }}</span>
+    <span class="brief-status-fresh">{{ brief.freshness_note }}</span>
+  </div>
+
+  <div class="brief-tiles">
+    {% for tile in brief.tiles %}
+    <div class="brief-tile{% if tile.rag %} rag-{{ tile.rag }}{% endif %}">
+      <p class="brief-tile-label">{{ tile.label }}{% if tile.rag %}<span class="rag-dot rag-{{ tile.rag }}"></span>{% endif %}</p>
+      <p class="brief-tile-value">{{ tile.value if tile.value is not none else '—' }}<small>{{ tile.unit }}</small></p>
+      <p class="brief-tile-delta">
+        {% if tile.delta is not none %}
+          {% if tile.better is true %}<span class="brief-delta-good">{% elif tile.better is false %}<span class="brief-delta-bad">{% else %}<span>{% endif %}
+          {% if tile.delta > 0 %}&#9650; +{{ tile.delta }}{% elif tile.delta < 0 %}&#9660; {{ tile.delta }}{% else %}&mdash; no change{% endif %}</span> 7d
+        {% else %}no baseline yet{% endif %}
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="brief-section-title">Needs a decision ({{ brief.decisions | length }} item{{ 's' if brief.decisions | length != 1 else '' }})</h2>
+  <div class="brief-two-col">
+    <div class="panel">
+      {% if brief.decisions %}
+      <ul class="brief-decisions-list">
+        {% for decision in brief.decisions %}
+        <li class="brief-decision-item">
+          <p class="brief-decision-title">{{ decision.title }}</p>
+          <p class="brief-decision-meta">
+            {% if decision.source_name %}{{ decision.source_name }} &middot; {% endif %}
+            <span class="what-changed-severity what-changed-{{ decision.severity }}">{{ decision.severity }}</span>
+            &middot; {{ decision.ts }}
+          </p>
+          {% if decision.detail %}
+          <dl class="brief-decision-detail">
+            {% for key, value in decision.detail.items() %}
+            <div class="brief-decision-detail-row"><dt>{{ key }}</dt><dd>{{ value }}</dd></div>
+            {% endfor %}
+          </dl>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No open critical items this week.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Asks for leadership</h3>
+      {% if brief.asks %}
+      <ul class="asks">
+        {% for ask in brief.asks %}
+        <li>{{ ask }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No asks recorded for this week yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="brief-section-title">Posture &amp; compliance</h2>
+  <div class="brief-three-col">
+    <div class="panel">
+      <h3>Configuration review</h3>
+      {% set device_review = brief.posture_panels.device_review %}
+      {% if device_review %}
+      <p class="brief-lede"><strong>{{ (device_review.devices_reviewed or 0) - (device_review.devices_with_failures or 0) }} of {{ device_review.devices_reviewed or 0 }} devices pass.</strong> {{ device_review.devices_with_failures or 0 }} open findings.</p>
+      {% else %}
+      <p class="what-changed-empty">No configuration review data yet.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Firmware compliance</h3>
+      {% set firmware = brief.posture_panels.firmware %}
+      {% if firmware %}
+      <p class="brief-lede"><strong>{{ firmware.version_compliance_pct }}%</strong> compliant.</p>
+      {% else %}
+      <p class="what-changed-empty">No firmware data yet.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Change control</h3>
+      {% set change_control = brief.posture_panels.change_control %}
+      {% if change_control %}
+      <ul class="brief-kv-list">
+        <li>Pending installs &middot; {{ change_control.devices_out_of_sync or 0 }}</li>
+        <li>Admin changes (24h) &middot; {{ change_control.admin_changes_24h or 0 }}</li>
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No change-control data yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="brief-section-title">Trends (30 days)</h2>
+  <div class="brief-two-col">
+    <div class="panel">
+      <h3>Posture score vs. target</h3>
+      {{ charts.domain_score_chart(brief.trends.posture.points, brief.trends.posture.target) }}
+    </div>
+    <div class="panel">
+      <h3>Logging &amp; visibility score vs. target</h3>
+      {{ charts.domain_score_chart(brief.trends.logging.points, brief.trends.logging.target) }}
+    </div>
+  </div>
+</div>
+</body>
+</html>

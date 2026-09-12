@@ -13,6 +13,8 @@ from app.widgets import (
     WIDGET_CATALOG,
     _current_summary,
     _downsample,
+    _freshness_collected_at,
+    _is_stale,
     annotate,
     default_layout,
     gauge_geometry,
@@ -1351,3 +1353,110 @@ def test_annotate_baseline_delta_uses_metric_key_override_for_derived_widgets():
     assert annotated["data"]["now"] == 90.0
     assert annotated["data"]["baseline_delta"] == 20.0
     assert annotated["data"]["better"] is True
+
+
+# --- schema_version 1/2 freshness acceptance (_freshness_collected_at / _is_stale) ---
+
+
+def test_is_stale_schema_v1_regression_fresh():
+    """No schema_version / freshness key at all -- exactly today's v1 lookup."""
+    value = {"hygiene_sweep_collected_at": _iso(5)}
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_is_stale_schema_v1_regression_stale():
+    value = {"hygiene_sweep_collected_at": _iso(200)}
+    assert _is_stale(value, "4thealth.hygiene_score") is True
+
+
+def test_is_stale_schema_v1_regression_device_review_special_case():
+    """Regression: device_review_posture's special-cased nested lookup is unchanged."""
+    value = {"device_review": {"collected_at": _iso(5)}}
+    assert _is_stale(value, "4thealth.device_review_posture") is False
+
+    stale_value = {"device_review": {"collected_at": _iso(3000)}}
+    assert _is_stale(stale_value, "4thealth.device_review_posture") is True
+
+
+def test_freshness_collected_at_uses_v2_freshness_map_when_present():
+    """The v2 path is actually read, not an accidental v1 fallback: the
+    top-level key of the same name is absent, so a fresh result only
+    happens if freshness["hygiene_sweep_collected_at"] was consulted."""
+    value = {
+        "schema_version": 2,
+        "freshness": {"hygiene_sweep_collected_at": _iso(5)},
+    }
+    assert _freshness_collected_at(value, "hygiene_sweep_collected_at") == value["freshness"]["hygiene_sweep_collected_at"]
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_is_stale_schema_v2_freshness_map_makes_stale_widget_fresh():
+    # Top-level key (v1 shape) says stale; freshness map (v2 shape) says fresh.
+    # Only a real read of the freshness map should report "not stale" here.
+    value = {
+        "schema_version": 2,
+        "hygiene_sweep_collected_at": _iso(3000),
+        "freshness": {"hygiene_sweep_collected_at": _iso(5)},
+    }
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_freshness_collected_at_v2_tries_bare_group_name_key():
+    """Sibling repos may key the freshness map by the bare group name rather
+    than repeating the "_collected_at" suffix."""
+    value = {
+        "schema_version": 2,
+        "freshness": {"hygiene_sweep": _iso(5)},
+    }
+    assert _freshness_collected_at(value, "hygiene_sweep_collected_at") == value["freshness"]["hygiene_sweep"]
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_freshness_collected_at_v2_missing_key_falls_back_to_v1_payload():
+    value = {
+        "schema_version": 2,
+        "freshness": {"device_sweep_collected_at": _iso(5)},
+        "hygiene_sweep_collected_at": _iso(200),
+    }
+    # freshness map has no hygiene_sweep_collected_at / hygiene_sweep entry --
+    # fall back to the v1 top-level key.
+    assert _freshness_collected_at(value, "hygiene_sweep_collected_at") == value["hygiene_sweep_collected_at"]
+    assert _is_stale(value, "4thealth.hygiene_score") is True
+
+
+def test_freshness_collected_at_freshness_not_a_dict_falls_back_to_v1():
+    value = {
+        "schema_version": 2,
+        "freshness": "not-a-dict",
+        "hygiene_sweep_collected_at": _iso(5),
+    }
+    assert _freshness_collected_at(value, "hygiene_sweep_collected_at") == value["hygiene_sweep_collected_at"]
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_freshness_collected_at_schema_version_not_2_falls_back_to_v1():
+    value = {
+        "schema_version": 1,
+        "freshness": {"hygiene_sweep_collected_at": _iso(3000)},
+        "hygiene_sweep_collected_at": _iso(5),
+    }
+    # schema_version isn't 2 -- the freshness map (even though present and
+    # containing the key) must be ignored entirely.
+    assert _freshness_collected_at(value, "hygiene_sweep_collected_at") == value["hygiene_sweep_collected_at"]
+    assert _is_stale(value, "4thealth.hygiene_score") is False
+
+
+def test_freshness_collected_at_device_review_v2_bare_key_in_freshness_map():
+    value = {
+        "schema_version": 2,
+        "freshness": {"device_review": _iso(5)},
+    }
+    assert _freshness_collected_at(value, "device_review") == value["freshness"]["device_review"]
+    assert _is_stale(value, "4thealth.device_review_posture") is False
+
+
+def test_freshness_collected_at_never_raises_on_malformed_input():
+    assert _freshness_collected_at({}, "hygiene_sweep_collected_at") is None
+    assert _freshness_collected_at({"schema_version": 2}, "hygiene_sweep_collected_at") is None
+    assert _freshness_collected_at({"schema_version": 2, "freshness": None}, "hygiene_sweep_collected_at") is None
+    assert _freshness_collected_at({"schema_version": 2, "freshness": {}}, "device_review") is None

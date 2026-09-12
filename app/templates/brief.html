@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% import "_charts.html" as charts %}
+{% block content %}
+<div class="brief">
+  <div class="brief-masthead">
+    <h1>Weekly Executive Brief</h1>
+    <p class="brief-meta">Week of {{ brief.week_start.strftime('%b %-d') }} &ndash; {{ brief.week_end.strftime('%b %-d, %Y') }} &middot; generated {{ brief.generated_at.strftime('%H:%M') }} UTC &middot; compared with prior 7 days</p>
+  </div>
+
+  <div class="brief-status-line brief-status-{{ brief.status_class }}">
+    <span class="brief-status-word">{{ brief.status_word }}</span>
+    <span class="brief-status-text">{{ brief.status_sentence }}</span>
+    <span class="brief-status-fresh">{{ brief.freshness_note }}</span>
+  </div>
+
+  <div class="brief-tiles">
+    {% for tile in brief.tiles %}
+    <div class="brief-tile{% if tile.rag %} rag-{{ tile.rag }}{% endif %}">
+      <p class="brief-tile-label">{{ tile.label }}{% if tile.rag %}<span class="rag-dot rag-{{ tile.rag }}"></span>{% endif %}</p>
+      <p class="brief-tile-value">{{ tile.value if tile.value is not none else '—' }}<small>{{ tile.unit }}</small></p>
+      <p class="brief-tile-delta">
+        {% if tile.delta is not none %}
+          {% if tile.better is true %}<span class="brief-delta-good">{% elif tile.better is false %}<span class="brief-delta-bad">{% else %}<span>{% endif %}
+          {% if tile.delta > 0 %}▲ +{{ tile.delta }}{% elif tile.delta < 0 %}▼ {{ tile.delta }}{% else %}— no change{% endif %}</span> 7d
+        {% else %}no baseline yet{% endif %}
+      </p>
+      {{ charts.sparkline_chart(tile.series) }}
+    </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="brief-section-title">Needs a decision <span class="brief-chip">{{ brief.decisions | length }} item{{ 's' if brief.decisions | length != 1 else '' }}</span></h2>
+  <div class="brief-two-col">
+    <div class="panel">
+      {% if brief.decisions %}
+      <ul class="brief-decisions-list">
+        {% for decision in brief.decisions %}
+        <li class="brief-decision-item">
+          <p class="brief-decision-title">{{ decision.title }}</p>
+          <p class="brief-decision-meta">
+            {% if decision.source_name %}{{ decision.source_name }} &middot; {% endif %}
+            <span class="what-changed-severity what-changed-{{ decision.severity }}">{{ decision.severity }}</span>
+            &middot; {{ decision.ts | local_time }}
+          </p>
+          {% if decision.detail %}
+          <dl class="brief-decision-detail">
+            {% for key, value in decision.detail.items() %}
+            <div class="brief-decision-detail-row"><dt>{{ key }}</dt><dd>{{ value }}</dd></div>
+            {% endfor %}
+          </dl>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No open critical items this week.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Asks for leadership</h3>
+      {% if can_edit_asks %}
+      <form method="post" action="{{ url_for('brief.save_asks') }}" id="briefAsksForm" class="brief-asks-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="week_key" value="{{ brief.week_key }}">
+        <div id="briefAsksInputs">
+          {% for ask in brief.asks %}
+          <div class="brief-ask-row"><input type="text" name="ask" value="{{ ask }}" class="form-control"><button type="button" class="btn btn-sm btn-ghost brief-ask-remove" onclick="this.parentElement.remove()">&times;</button></div>
+          {% endfor %}
+          <div class="brief-ask-row"><input type="text" name="ask" value="" class="form-control" placeholder="New ask&hellip;"><button type="button" class="btn btn-sm btn-ghost brief-ask-remove" onclick="this.parentElement.remove()">&times;</button></div>
+        </div>
+        <div class="brief-ask-controls">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="fourtAddAskRow()">+ Add ask</button>
+          <button type="submit" class="btn btn-sm btn-secondary">Save</button>
+        </div>
+      </form>
+      {% else %}
+      {% if brief.asks %}
+      <ul class="asks">
+        {% for ask in brief.asks %}
+        <li>{{ ask }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No asks recorded for this week yet.</p>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="brief-section-title">Posture &amp; compliance</h2>
+  <div class="brief-three-col">
+    <div class="panel">
+      <h3>Configuration review</h3>
+      {% set device_review = brief.posture_panels.device_review %}
+      {% if device_review %}
+      <p class="brief-lede"><strong>{{ (device_review.devices_reviewed or 0) - (device_review.devices_with_failures or 0) }} of {{ device_review.devices_reviewed or 0 }} devices pass.</strong> {{ device_review.devices_with_failures or 0 }} open findings.</p>
+      {% if device_review.top_failing_checks %}
+      <ul class="brief-kv-list">
+        {% for check in device_review.top_failing_checks %}
+        <li>{{ check.name or check }}{% if check.count is defined %} &middot; {{ check.count }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% else %}
+      <p class="what-changed-empty">No configuration review data yet.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Firmware compliance</h3>
+      {% set firmware = brief.posture_panels.firmware %}
+      {% if firmware %}
+      <p class="brief-lede"><strong>{{ firmware.version_compliance_pct }}%</strong> compliant.</p>
+      {% if firmware.version_breakdown %}
+      <ul class="brief-kv-list">
+        {% for version, info in firmware.version_breakdown.items() %}
+        <li>{{ version }} &middot; {{ info.count if info is mapping else info }}{% if info is mapping and info.eol %} <span class="brief-flag brief-flag-crit">EOL</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% else %}
+      <p class="what-changed-empty">No firmware data yet.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Change control</h3>
+      {% set change_control = brief.posture_panels.change_control %}
+      {% if change_control %}
+      <ul class="brief-kv-list">
+        <li>Pending installs &middot; {{ change_control.devices_out_of_sync or 0 }}</li>
+        <li>Admin changes (24h) &middot; {{ change_control.admin_changes_24h or 0 }}</li>
+      </ul>
+      {% else %}
+      <p class="what-changed-empty">No change-control data yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="brief-section-title">Trends <span class="brief-chip">30 days</span></h2>
+  <div class="brief-two-col">
+    <div class="panel">
+      <h3>Posture score vs. target</h3>
+      {{ charts.domain_score_chart(brief.trends.posture.points, brief.trends.posture.target) }}
+    </div>
+    <div class="panel">
+      <h3>Logging &amp; visibility score vs. target</h3>
+      {{ charts.domain_score_chart(brief.trends.logging.points, brief.trends.logging.target) }}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function fourtAddAskRow() {
+    var container = document.getElementById('briefAsksInputs');
+    var row = document.createElement('div');
+    row.className = 'brief-ask-row';
+    row.innerHTML = '<input type="text" name="ask" value="" class="form-control" placeholder="New ask&hellip;"><button type="button" class="btn btn-sm btn-ghost brief-ask-remove" onclick="this.parentElement.remove()">&times;</button>';
+    container.appendChild(row);
+  }
+</script>
+{% endblock %}

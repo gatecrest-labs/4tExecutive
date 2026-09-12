@@ -30,10 +30,25 @@ cache.
   CSV. Fixed and comprehensive (every catalog metric x every enabled
   source) rather than per-user — see "Reading the board" below for what the
   colors and symbols mean.
+- **Weekly Executive Brief** (`/brief`) — a single-page, print/email-ready
+  summary: a status sentence, 5 headline tiles with sparklines, "Needs a
+  decision" (open critical events), a three-panel posture/compliance
+  section, and two 30-day trend charts. Leadership can add/edit an "asks"
+  list inline (gated by a separate `brief_edit` tab). Gated behind the
+  `brief` tab permission. Sent automatically on a weekly schedule (or
+  on-demand via Admin → Reports) as an HTML email with a real PDF
+  attachment when a headless Chrome/Chromium binary is available.
+- **Fleet devices drill-down** (`/devices`, and a "Devices" section on each
+  domain's detail page) — per-device rows (posture failures, hygiene
+  findings, EOL firmware, silent logging, PSIRT exposure) merged across
+  every enabled source, with a client-side filter box and CSV export
+  (`/devices.csv`, `/domain/<name>/devices.csv`).
 - **Admin tab** — a single tabbed page: Sources (add/remove/refresh the
   source systems 4tExecutive polls), Users, Settings (display timezone),
   Scoring (the weights and formula parameters behind each domain's grade),
-  and System (this server's own CPU/Memory/Disk utilization, charted over a
+  Reports (SMTP settings, weekly brief send schedule, "send test", and a
+  history of past brief sends with HTML/PDF download links), and System
+  (this server's own CPU/Memory/Disk utilization, charted over a
   selectable time range). Gated behind the `admin` tab permission in
   `config/groups.json`.
 - **Scheduled collector** — polls each source on its own
@@ -176,10 +191,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and conventions.
 app/
   routes/            Flask blueprints (auth, dashboard, admin)
   templates/          Jinja templates
-  collector.py         APScheduler polling job
+  collector.py         APScheduler polling job (incl. weekly brief send job)
   metrics_db.py        SQLite cache reads/writes
   sources.py           Source registry CRUD
   widgets.py           Widget catalog + value lookup
+  devices.py           Per-domain / fleet devices drill-down data
+  brief.py             Weekly Executive Brief data assembly
+  brief_send.py         Brief render -> PDF -> email -> record job
+  brief_pdf.py           Headless-Chrome PDF rendering
+  brief_schedule.py       Weekly send schedule config
+  smtp_client.py          SMTP config + send (password encrypted at rest)
   auth.py, groups.py    Local auth and tab permissions
   config_paths.py       Central config directory + first-run bootstrap
 config/

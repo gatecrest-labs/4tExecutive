@@ -4,15 +4,33 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
 
 from app.app_settings import get_setting, set_setting
 from app.auth import create_user, delete_user, get_user
+from app.brief_schedule import (
+    get_brief_schedule_config,
+    save_brief_schedule_config,
+    validate_schedule_config,
+)
 from app.collector import poll_now, poll_status
+from app.config_paths import GENERATED_DIR
 from app.decorators import tab_required
 from app.domains import get_scoring_config, save_scoring_config
 from app.groups import get_user_groups, list_group_names, set_user_groups
 from app.local_time import DEFAULT_TIMEZONE, is_valid_timezone
+from app.metrics_db import get_brief_sends
+from app.smtp_client import load_smtp_config, save_smtp_config, send_email
 from app.sources import add_source, delete_source, list_sources
 from app.widgets import DEFAULT_RANGE, RANGES, get_widget_series
 
@@ -20,7 +38,13 @@ bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
 def _render_admin(
-    active_panel, sources_error=None, users_error=None, settings_error=None, scoring_error=None
+    active_panel,
+    sources_error=None,
+    users_error=None,
+    settings_error=None,
+    scoring_error=None,
+    reports_error=None,
+    reports_message=None,
 ):
     from app.atomic_io import read_json
     from app.auth import USERS_PATH
@@ -43,6 +67,11 @@ def _render_admin(
         settings_error=settings_error,
         scoring=get_scoring_config(),
         scoring_error=scoring_error,
+        smtp_config=load_smtp_config(),
+        schedule_config=get_brief_schedule_config(),
+        brief_sends=get_brief_sends(),
+        reports_error=reports_error,
+        reports_message=reports_message,
     )
 
 
@@ -191,6 +220,117 @@ def update_scoring_route():
 @tab_required("admin")
 def system():
     return _render_admin("system")
+
+
+# ═══════════════════════  REPORTS PANEL (Executive Brief email/PDF)  ═══════════════════════
+
+
+@bp.route("/reports", methods=["GET"])
+@tab_required("admin")
+def reports():
+    return _render_admin("reports")
+
+
+@bp.route("/reports/smtp", methods=["POST"])
+@tab_required("admin")
+def update_smtp_route():
+    try:
+        port = int(request.form.get("port", 25))
+    except ValueError:
+        return _render_admin("reports", reports_error="Port must be a whole number.")
+
+    # The password field never round-trips the decrypted secret back into
+    # the rendered <input> (see admin/index.html's placeholder="(unchanged)")
+    # -- a blank submitted value means "keep whatever is already stored",
+    # mirroring app.sources's "only overwrite the token if one was actually
+    # submitted" behavior for the source token field.
+    existing = load_smtp_config()
+    submitted_password = request.form.get("password", "")
+    password = submitted_password if submitted_password else existing.get("password", "")
+
+    save_smtp_config(
+        {
+            "host": request.form.get("host", "").strip(),
+            "port": port,
+            "tls_mode": request.form.get("tls_mode", "none"),
+            "username": request.form.get("username", "").strip(),
+            "password": password,
+            "from_address": request.form.get("from_address", "").strip(),
+            "enabled": request.form.get("enabled") == "on",
+        }
+    )
+    return redirect(url_for("admin.reports"))
+
+
+@bp.route("/reports/schedule", methods=["POST"])
+@tab_required("admin")
+def update_brief_schedule_route():
+    try:
+        weekday = int(request.form.get("weekday", 0))
+    except ValueError:
+        weekday = -1  # forces a validation error below rather than a 500
+    try:
+        hour = int(request.form.get("hour", 8))
+    except ValueError:
+        hour = -1
+
+    cfg = {
+        "weekday": weekday,
+        "hour": hour,
+        "recipients": request.form.get("recipients", "").strip(),
+        "enabled": request.form.get("enabled") == "on",
+    }
+    errors = validate_schedule_config(cfg)
+    if errors:
+        return _render_admin("reports", reports_error=" ".join(errors))
+
+    save_brief_schedule_config(cfg)
+    return redirect(url_for("admin.reports"))
+
+
+@bp.route("/reports/test", methods=["POST"])
+@tab_required("admin")
+def send_test_brief_route():
+    """Build today's real brief and email it to one test address, using
+    send_email directly (not smtp_client.test_connection's canned message) --
+    this is meant to prove the whole render+SMTP path works end to end, not
+    just the SMTP connection."""
+    from app.brief import build_brief
+
+    to_address = request.form.get("to_address", "").strip()
+    if not to_address or "@" not in to_address:
+        return _render_admin("reports", reports_error="Enter a valid test recipient address.")
+
+    try:
+        from flask import current_app
+
+        brief = build_brief()
+        html = current_app.jinja_env.get_template("brief_email.html").render(brief=brief)
+        send_email(to_address, "4tExecutive Weekly Brief -- test send", html)
+    except Exception as exc:
+        return _render_admin("reports", reports_error=f"Test send failed: {exc}")
+
+    return _render_admin("reports", reports_message=f"Test brief sent to {to_address}.")
+
+
+_DOWNLOAD_MIMETYPES = {"html": "text/html", "pdf": "application/pdf"}
+
+
+@bp.route("/reports/sends/<int:send_id>/download.<ext>", methods=["GET"])
+@tab_required("admin")
+def download_brief_send_route(send_id, ext):
+    if ext not in _DOWNLOAD_MIMETYPES:
+        abort(404)
+
+    send_row = next((s for s in get_brief_sends() if s["id"] == send_id), None)
+    if send_row is None:
+        abort(404)
+
+    file_path = GENERATED_DIR / f"{send_row['week_key']}.{ext}"
+    if not file_path.exists():
+        abort(404)
+
+    return send_file(file_path, mimetype=_DOWNLOAD_MIMETYPES[ext], as_attachment=True)
 
 
 _HOST_METRICS_KEYS = {

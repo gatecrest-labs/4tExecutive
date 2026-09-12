@@ -8,6 +8,11 @@ from pathlib import Path
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 EXAMPLES_DIR = CONFIG_DIR / "examples"
 
+# Rendered brief HTML/PDF files, one pair per week_key, served back via
+# Admin > Reports' download route. Created on demand (see app.brief_send) --
+# not part of first-run bootstrap since it holds generated output, not config.
+GENERATED_DIR = CONFIG_DIR.parent / "generated" / "briefs"
+
 
 def bootstrap_config() -> None:
     """Copy any missing config/examples/*.example.json to config/<name>.json."""

@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from flask import Blueprint, abort, jsonify, make_response, render_template, request
+from flask import Blueprint, Response, abort, jsonify, make_response, render_template, request
 
 from app.decorators import tab_required
+from app.devices import (
+    DOMAIN_DEVICE_CSV_COLUMNS,
+    FLEET_DEVICE_CSV_COLUMNS,
+    devices_to_csv,
+    get_domain_devices,
+    get_fleet_devices,
+)
 from app.domains import (
     DOMAINS,
     compute_domain,
@@ -110,6 +117,7 @@ def detail(name):
 
     result = compute_domain(name, adom=adom_filter)
     members = domain_member_table(name, adom=adom_filter)
+    devices = get_domain_devices(name)
     response = make_response(
         render_template(
             "domain_detail.html",
@@ -122,9 +130,36 @@ def detail(name):
             adom_filter=adom_filter,
             adoms=list_by_adom_names(),
             infra=get_infra_devices() if name == "availability" else None,
+            devices=devices,
         )
     )
     _set_adom_cookie(response, adom_filter)
+    return response
+
+
+@bp.route("/domain/<name>/devices.csv")
+@tab_required("dashboard")
+def domain_devices_csv(name):
+    if name not in DOMAINS:
+        abort(404)
+    csv_text = devices_to_csv(get_domain_devices(name), DOMAIN_DEVICE_CSV_COLUMNS)
+    response = Response(csv_text, mimetype="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={name}-devices.csv"
+    return response
+
+
+@bp.route("/devices")
+@tab_required("dashboard")
+def devices():
+    return render_template("devices.html", rows=get_fleet_devices())
+
+
+@bp.route("/devices.csv")
+@tab_required("dashboard")
+def devices_csv():
+    csv_text = devices_to_csv(get_fleet_devices(), FLEET_DEVICE_CSV_COLUMNS)
+    response = Response(csv_text, mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=fleet-devices.csv"
     return response
 
 

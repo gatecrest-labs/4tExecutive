@@ -403,6 +403,70 @@ compatible with 4tExecutive). Included for future API evolution scenarios.
 the bump is additive (every `1` key is still present), so 4tExecutive accepts
 either version and simply has no `psirt` data to show from a `1` source.
 
+### schema_version 2: `freshness` map and optional `details` lists
+
+4thealth-plus and 4tlog are concurrently moving toward another additive
+`schema_version: 2` change: a top-level `freshness` field-group timestamp
+map, kept **alongside** every existing v1 `*_collected_at`/nested
+`collected_at` key for at least one release, plus a handful of new
+**optional** `details` lists inside existing rollups. 4tExecutive accepts
+both schema versions for both changes — nothing about them is required, and
+neither introduces a breaking change to a `schema_version: 1` payload.
+
+**`freshness` map** (staleness only): when `schema_version == 2` and a
+top-level `freshness` object is present, `app/widgets.py`'s
+`_freshness_collected_at()` prefers `freshness[<field-group key>]` over the
+payload's own v1 timestamp field for that group, trying the key as-given
+first and then with any `_collected_at` suffix stripped (some sibling
+payloads key the map by the bare group name). If `freshness` is
+missing/not-a-dict, or the specific key isn't present in it, 4tExecutive
+falls back to exactly the v1 lookup — see
+[architecture.md](architecture.md#schema-v1v2-freshness-acceptance) for the
+full fallback chain. Example v2 payload shape:
+
+```json
+{
+  "schema_version": 2,
+  "device_sweep_collected_at": "2026-09-10T09:00:00Z",
+  "freshness": {
+    "device_sweep_collected_at": "2026-09-10T09:00:00Z",
+    "hygiene_sweep": "2026-09-10T08:30:00Z"
+  }
+}
+```
+
+**Optional `details` lists** (device-level drill-down, feeds `/devices` and
+each domain's "Devices" section — see `app/devices.py`): every list below is
+treated as optional/absent-safe — a missing list is simply not shown, never
+synthesized from an aggregate count.
+
+| Rollup                          | Optional list field                       | Row shape (per entry) |
+|----------------------------------|--------------------------------------------|------------------------|
+| `device_review`                 | `details`                                  | `{device, adom, failed_checks: [key], worst_severity}` |
+| `rule_hygiene`                   | `details`                                  | `{package, adom, findings}` |
+| `version_breakdown` (per-version entry) | `devices` (EOL versions only)      | `{device, adom, version}` |
+| top-level (4tlog)                | `silent_devices`                           | `{devid, devname, last_log_at}` |
+| `psirt.top_advisory`             | `devices`                                  | `{device, adom, version, workaround_applied}` |
+
+None of these lists affect scoring or any existing scalar/rollup field —
+they're purely additive, read-only drill-down data.
+
+### PDF report generation — a correction from the original design doc
+
+The design doc this repo's Weekly Executive Brief was built from assumed
+4thealth-plus does headless-Chrome PDF conversion for its own `"pdf"` report
+format. **It does not** — 4thealth-plus's `"pdf"` format is actually a
+styled HTML attachment (the format name is a mislabel in that codebase, not
+a real conversion step). 4tExecutive's own weekly brief (`app/brief_pdf.py`)
+implements *real* PDF generation itself, independently of that repo: it
+shells out to a headless Chrome/Chromium binary (`CHROME_BINARY` env var, or
+a fixed fallback search list) via `subprocess`, and gracefully skips the PDF
+attachment (the HTML email still sends) when no such binary is found on the
+host. If you're comparing behavior against 4thealth-plus's "pdf" report
+expecting a rendered PDF there, you won't find one — that gap is what this
+repo's `brief_pdf.py` was built to actually close for 4tExecutive's own
+brief.
+
 Along with `version_breakdown`, `device_review`, `rule_hygiene`, `psirt`, `change_control`, `lifecycle`, `by_adom`, `infra`, and `ai_usage_24h`,
 these nested and collection-tracking fields form the complete contract; every other
 field above is a scalar.

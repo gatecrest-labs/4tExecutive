@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import psutil
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from app.domains import DOMAINS, compute_domain, store_domain_scores
 from app.events import (
@@ -225,11 +226,49 @@ def _run_domain_scores() -> None:
         logger.exception("Failed to compute domain scores")
 
 
+def _run_weekly_brief(app) -> None:
+    try:
+        from app.brief_send import send_weekly_brief
+
+        send_weekly_brief(app)
+    except Exception:
+        logger.exception("Failed to send weekly brief")
+
+
+def _register_weekly_brief_job(scheduler: BackgroundScheduler, app) -> None:
+    """Register the weekly brief send job, if enabled in config at
+    scheduler-start time.
+
+    Like every other job in this function, the schedule is read once at
+    startup -- there is no hot-reload if an operator changes the weekday/
+    hour/enabled fields in Admin > Reports afterwards; that takes effect on
+    the next app restart, same as poll_all's fixed 1-minute interval or
+    domain_scores' fixed 5-minute interval not being reconfigurable either.
+    """
+    try:
+        from app.brief_schedule import get_brief_schedule_config
+
+        schedule_cfg = get_brief_schedule_config()
+    except Exception:
+        logger.exception("Failed to load brief schedule config; weekly brief job not registered")
+        return
+
+    if not schedule_cfg.get("enabled"):
+        return
+
+    scheduler.add_job(
+        lambda: _run_weekly_brief(app),
+        CronTrigger(day_of_week=schedule_cfg.get("weekday", 0), hour=schedule_cfg.get("hour", 8)),
+        id="weekly_brief",
+    )
+
+
 def init_scheduler(app) -> None:
     scheduler = BackgroundScheduler()
     scheduler.add_job(poll_all, "interval", minutes=1, id="poll_all")
     scheduler.add_job(poll_self, "interval", minutes=1, id="poll_self")
     scheduler.add_job(_run_retention, "interval", hours=24, id="metrics_retention")
     scheduler.add_job(_run_domain_scores, "interval", minutes=5, id="domain_scores")
+    _register_weekly_brief_job(scheduler, app)
     scheduler.start()
     app.extensions["scheduler"] = scheduler
