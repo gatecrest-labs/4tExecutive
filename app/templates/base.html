@@ -26,6 +26,7 @@
   <nav class="topbar-nav">
     <a href="{{ url_for('scorecard.index') }}" class="nav-link {% if request.endpoint == 'scorecard.index' %}active{% endif %}">Scorecard</a>
     <a href="{{ url_for('dashboard.index') }}" class="nav-link {% if request.endpoint in ('dashboard.index', 'dashboard.edit') %}active{% endif %}">Board</a>
+    <a href="{{ url_for('scorecard.devices') }}" class="nav-link {% if request.endpoint == 'scorecard.devices' %}active{% endif %}">Fleet</a>
     {% if user_has_tab(session.username, 'admin') %}
     <a href="{{ url_for('admin.sources') }}" class="nav-link {% if request.blueprint == 'admin' %}active{% endif %}">Admin</a>
     {% endif %}
