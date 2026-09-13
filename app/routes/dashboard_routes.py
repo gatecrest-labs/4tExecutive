@@ -9,7 +9,7 @@ from flask import Blueprint, Response, jsonify, make_response, render_template, 
 
 from app.board import DOMAIN_ORDER, build_rows, rows_to_csv
 from app.decorators import tab_required
-from app.domains import DOMAINS
+from app.domains import DOMAINS, fleet_freshness
 from app.events import positioned_ticks
 from app.layouts import get_layout, save_layout
 from app.metrics_db import get_events, list_by_adom_names
@@ -129,6 +129,7 @@ def _set_board_cookies(response) -> None:
 def index():
     context = _board_context()
     domains = [{"name": name, "label": DOMAINS[name]["label"]} for name in DOMAIN_ORDER]
+    now = datetime.now(UTC)
     response = make_response(
         render_template(
             "board.html",
@@ -136,6 +137,9 @@ def index():
             domains=domains,
             sources=list_sources(),
             adoms=list_by_adom_names(),
+            now_iso=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            freshness=fleet_freshness(now=now),
+            metrics_count=len(context["rows"]),
         )
     )
     _set_board_cookies(response)

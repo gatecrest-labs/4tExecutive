@@ -2,7 +2,16 @@
 {% import "_charts.html" as charts %}
 {% block content %}
 <div class="scorecard-header">
-  <h1>Security Scorecard</h1>
+  <div>
+    <h1>Security Scorecard</h1>
+    <p class="scorecard-freshness">
+      {{ now_iso | local_time }}
+      {% if freshness.oldest_minutes is not none %}
+        &middot; <span class="{% if freshness.stale %}posture-stale{% endif %}">{{ 'data may be stale' if freshness.stale else 'data current' }} (oldest {{ freshness.oldest_minutes }} min)</span>
+      {% endif %}
+      &middot; {{ freshness.source_count }} source{{ 's' if freshness.source_count != 1 else '' }}
+    </p>
+  </div>
   <form method="get" class="scorecard-adom-filter">
     <label for="scorecardAdomFilter">ADOM</label>
     <select id="scorecardAdomFilter" name="adom" onchange="this.form.submit()">

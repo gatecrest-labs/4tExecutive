@@ -19,6 +19,7 @@ from app.domains import (
     compute_domain,
     compute_overall,
     domain_member_table,
+    fleet_freshness,
     get_infra_devices,
 )
 from app.events import event_domain, positioned_ticks
@@ -88,6 +89,7 @@ def index():
         sparkline = _domain_sparkline(name)
         ticks = positioned_ticks(sparkline, _threshold_cross_events(sparkline_since, name), width=240)
         cards.append({**result, "sparkline": sparkline, "ticks": ticks})
+    now = datetime.now(UTC)
     response = make_response(
         render_template(
             "scorecard.html",
@@ -96,6 +98,8 @@ def index():
             what_changed=_what_changed(),
             adom_filter=adom_filter,
             adoms=list_by_adom_names(),
+            now_iso=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            freshness=fleet_freshness(now=now),
         )
     )
     _set_adom_cookie(response, adom_filter)
