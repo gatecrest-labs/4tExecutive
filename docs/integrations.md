@@ -63,6 +63,7 @@ From `WIDGET_CATALOG` in `app/widgets.py`:
 | `psirt`                       | Vulnerability domain score      |
 | `change_control`               | Availability & Change domain rows |
 | `lifecycle`                    | Lifecycle & Support domain score |
+| `license_status`              | License Status                  |
 | `by_adom`                       | ADOM filter (Board, Scorecard) |
 | `infra`                        | Infrastructure card (Availability & Change domain page) |
 | `ai_usage_by_feature`         | (detail breakdown for AI Usage)|
@@ -283,6 +284,45 @@ end-of-support exposure:
 
 These three feed the **Lifecycle & Support** domain score (`app/domains.py`): firmware compliance (`version_compliance_pct`, weight 0.5) + a software-EOL component (`100 − devices_on_eol_version / firewall_managed_count × 100`, weight 0.25) + a hardware-EOS component (`100 − devices_hw_eos / firewall_managed_count × 100`, weight 0.25). Any missing component defaults optimistically to a full-health value (100 for firmware compliance, 0% for the EOL/EOS device shares) rather than penalizing a fleet for data 4thealth-plus hasn't reported yet — the domain scores `None` ("not yet measured") only when none of the three inputs have any data at all. `version_compliance_pct`, `devices_on_eol_version`, `lifecycle.devices_hw_eos`, and `lifecycle.devices_hw_eos_12m` all appear as rows on the Lifecycle & Support domain detail page.
 
+`license_status` is a nested object (from 4thealth-plus's
+`app.license_status_cache` daily sweep; absent on sources that haven't
+shipped it yet) containing fleet-wide FortiGate license status:
+
+```json
+{
+  "license_status": {
+    "devices_licensed": 40,
+    "devices_expired": 2,
+    "devices_unknown": 1,
+    "details": [
+      {"device": "fw-branch12", "adom": "Corp", "status": "expired", "expires": "2026-08-01"},
+      {"device": "fw-branch7", "adom": "Corp", "status": "unknown", "expires": null}
+    ],
+    "collected_at": "2026-09-16T03:00:00Z"
+  }
+}
+```
+
+- `devices_licensed` / `devices_expired` / `devices_unknown` — fleet-wide
+  device counts by license classification, from one FMG proxy call per
+  device (no bulk endpoint exists) run on a daily cadence.
+- `details` — only non-`"licensed"` devices ever appear here (expired or
+  unknown) — same "surface problems, not clean state" convention as
+  `lifecycle.models_unknown`. A clean fleet produces an empty list.
+- `collected_at` — timestamp of the daily sweep.
+- **Informational only — does not feed any domain score.** Unlike
+  `version_compliance_pct`/`devices_on_eol_version`/`lifecycle.devices_hw_eos`,
+  which are the three real inputs to the Lifecycle & Support domain's score
+  formula, `license_status.devices_expired`/`devices_unknown` are shown as
+  additional rows on that domain's detail page and as a Board widget, but
+  never change the computed grade.
+
+`extract_all()` flattens this into `license_status.devices_licensed`,
+`license_status.devices_expired`, and `license_status.devices_unknown`
+metric_points; `license_status` and `license_status.details` themselves are
+composite and always extract to nothing (same pattern as `lifecycle`/
+`lifecycle.models_unknown`).
+
 `by_adom` is a nested object (from 4thealth-plus schema_version 2 onward;
 absent on schema_version 1 sources), keyed by ADOM name, each value
 `{firewalls_total, firewall_online_count, version_compliance_pct,
@@ -447,6 +487,7 @@ synthesized from an aggregate count.
 | `version_breakdown` (per-version entry) | `devices` (EOL versions only)      | `{device, adom, version}` |
 | top-level (4tlog)                | `silent_devices`                           | `{devid, devname, last_log_at}` |
 | `psirt.top_advisory`             | `devices`                                  | `{device, adom, version, workaround_applied}` |
+| `license_status`                | `details`                                  | `{device, adom, status, expires}` |
 
 None of these lists affect scoring or any existing scalar/rollup field —
 they're purely additive, read-only drill-down data.
@@ -467,7 +508,7 @@ expecting a rendered PDF there, you won't find one — that gap is what this
 repo's `brief_pdf.py` was built to actually close for 4tExecutive's own
 brief.
 
-Along with `version_breakdown`, `device_review`, `rule_hygiene`, `psirt`, `change_control`, `lifecycle`, `by_adom`, `infra`, and `ai_usage_24h`,
+Along with `version_breakdown`, `device_review`, `rule_hygiene`, `psirt`, `change_control`, `lifecycle`, `license_status`, `by_adom`, `infra`, and `ai_usage_24h`,
 these nested and collection-tracking fields form the complete contract; every other
 field above is a scalar.
 
