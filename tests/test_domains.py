@@ -588,6 +588,38 @@ def test_domain_member_table_empty_for_domain_with_no_system(monkeypatch):
     assert domain_member_table("future_domain") == []
 
 
+def test_domain_member_table_includes_license_status_rows():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "license_status.devices_expired": 2.0,
+            "license_status.devices_unknown": 1.0,
+        },
+    )
+
+    rows = domain_member_table("lifecycle")
+
+    expired_row = next(r for r in rows if r["key"] == "license_status.devices_expired")
+    assert expired_row["now"] == 2.0
+    # No matching WIDGET_CATALOG entry scores this exact metric_key -> informational, no RAG.
+    assert expired_row["rag"] is None
+
+    unknown_row = next(r for r in rows if r["key"] == "license_status.devices_unknown")
+    assert unknown_row["now"] == 1.0
+
+
+def test_domain_member_table_license_status_rows_absent_when_no_data():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {"version_compliance_pct": 90.0})
+
+    rows = domain_member_table("lifecycle")
+
+    expired_row = next(r for r in rows if r["key"] == "license_status.devices_expired")
+    assert expired_row["now"] is None
+
+
 # ── get_infra_devices ─────────────────────────────────────────────────────────
 
 def test_get_infra_devices_merges_across_sources_and_normalizes_disk_field():
