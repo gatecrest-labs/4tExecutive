@@ -110,12 +110,7 @@ def _rows_logging(value: dict) -> list[dict]:
 
 def _rows_vulnerability(value: dict) -> list[dict]:
     top_advisory = _as_dict(_as_dict(value.get("psirt")).get("top_advisory"))
-    advisory_id = (
-        top_advisory.get("advisory_id")
-        or top_advisory.get("id")
-        or top_advisory.get("cve")
-        or "advisory"
-    )
+    advisory_id = top_advisory.get("advisory_id") or top_advisory.get("id") or top_advisory.get("cve") or "advisory"
     rows = []
     for entry in _as_list(top_advisory.get("devices")):
         if not isinstance(entry, dict):
@@ -188,11 +183,7 @@ def get_domain_devices(name: str) -> list[dict]:
             row = dict(entry)
             row["source_name"] = source["name"]
             row["device_label"] = (
-                row.get("device")
-                or row.get("devname")
-                or row.get("package")
-                or row.get("devid")
-                or "—"
+                row.get("device") or row.get("devname") or row.get("package") or row.get("devid") or "—"
             )
             rows.append(row)
     return rows
@@ -233,7 +224,5 @@ def devices_to_csv(rows: list[dict], columns: list[tuple[str, str]]) -> str:
     writer = csv.writer(buffer)
     writer.writerow([header for _, header in columns])
     for row in rows:
-        writer.writerow(
-            [row.get(key, "") if row.get(key) is not None else "" for key, _ in columns]
-        )
+        writer.writerow([row.get(key, "") if row.get(key) is not None else "" for key, _ in columns])
     return buffer.getvalue()
