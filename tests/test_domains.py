@@ -603,8 +603,8 @@ def test_domain_member_table_includes_license_status_rows():
 
     expired_row = next(r for r in rows if r["key"] == "license_status.devices_expired")
     assert expired_row["now"] == 2.0
-    # No matching WIDGET_CATALOG entry scores this exact metric_key -> informational, no RAG.
-    assert expired_row["rag"] is None
+    # Matches the license_status Board widget's catalog entry -> gets a real RAG, same as change_control.devices_out_of_sync's pattern elsewhere in this file
+    assert expired_row["rag"] == "red"
 
     unknown_row = next(r for r in rows if r["key"] == "license_status.devices_unknown")
     assert unknown_row["now"] == 1.0

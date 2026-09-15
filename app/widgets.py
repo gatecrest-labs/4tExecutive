@@ -266,7 +266,7 @@ WIDGET_CATALOG: dict[str, dict] = {
         "direction": "lower",
         "default_size": "2x2",
         "chart_type": "bar",
-        "rag": {"direction": "higher", "green": 0, "amber": 0},
+        "rag": {"direction": "lower", "green": 0, "amber": 0},
     },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
