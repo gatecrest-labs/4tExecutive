@@ -73,6 +73,37 @@ def _rows_lifecycle(value: dict) -> list[dict]:
             row.setdefault("version", version)
             row["detail_text"] = str(row.get("version"))
             rows.append(row)
+    # License status — only non-"licensed" devices ever appear in this list
+    # (see the companion 4thealth-plus repo's license_status_cache design),
+    # so every entry here is already a problem worth surfacing.
+    for entry in _as_list(_as_dict(value.get("license_status")).get("details")):
+        if not isinstance(entry, dict):
+            continue
+        row = dict(entry)
+        if entry.get("status") == "expired":
+            expires = entry.get("expires")
+            row["detail_text"] = f"license expired ({expires})" if expires else "license expired"
+        else:
+            row["detail_text"] = "license status unknown"
+        rows.append(row)
+    # License status — devices still "licensed" but expiring within 90 days
+    # (see 4thealth-plus's app.license_status_cache.compute_expiring_soon()).
+    # Distinct from the "details" loop above, which only ever lists devices
+    # already expired/unknown -- these are still-valid licenses that need
+    # review before they become one of those.
+    for entry in _as_list(_as_dict(value.get("license_status")).get("expiring_soon")):
+        if not isinstance(entry, dict):
+            continue
+        row = dict(entry)
+        days_until = entry.get("days_until")
+        expires = entry.get("expires")
+        if isinstance(days_until, (int, float)):
+            row["detail_text"] = f"license expires in {days_until:.0f} days ({expires})"
+        else:
+            row["detail_text"] = (
+                f"license expires soon ({expires})" if expires else "license expiring soon"
+            )
+        rows.append(row)
     return rows
 
 

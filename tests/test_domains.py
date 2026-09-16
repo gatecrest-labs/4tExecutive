@@ -588,6 +588,68 @@ def test_domain_member_table_empty_for_domain_with_no_system(monkeypatch):
     assert domain_member_table("future_domain") == []
 
 
+def test_domain_member_table_includes_license_status_rows():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "license_status.devices_expired": 2.0,
+            "license_status.devices_unknown": 1.0,
+        },
+    )
+
+    rows = domain_member_table("lifecycle")
+
+    expired_row = next(r for r in rows if r["key"] == "license_status.devices_expired")
+    assert expired_row["now"] == 2.0
+    # Matches the license_status Board widget's catalog entry -> gets a real RAG, same as change_control.devices_out_of_sync's pattern elsewhere in this file
+    assert expired_row["rag"] == "red"
+
+    unknown_row = next(r for r in rows if r["key"] == "license_status.devices_unknown")
+    assert unknown_row["now"] == 1.0
+
+
+def test_domain_member_table_license_status_rows_absent_when_no_data():
+    _add_source("s1", "4thealth")
+    insert_metric_points("s1", _iso(5), {"version_compliance_pct": 90.0})
+
+    rows = domain_member_table("lifecycle")
+
+    expired_row = next(r for r in rows if r["key"] == "license_status.devices_expired")
+    assert expired_row["now"] is None
+
+
+def test_domain_member_table_includes_license_expiring_soon_rows():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "license_status.devices_expiring_30": 3.0,
+            "license_status.devices_expiring_60": 5.0,
+            "license_status.devices_expiring_90": 8.0,
+        },
+    )
+
+    rows = domain_member_table("lifecycle")
+
+    row_30 = next(r for r in rows if r["key"] == "license_status.devices_expiring_30")
+    row_60 = next(r for r in rows if r["key"] == "license_status.devices_expiring_60")
+    row_90 = next(r for r in rows if r["key"] == "license_status.devices_expiring_90")
+    assert row_30["now"] == 3.0
+    assert row_60["now"] == 5.0
+    assert row_90["now"] == 8.0
+    # devices_expiring_30 matches the 4thealth.license_expiring_soon widget's
+    # metric_key (green=0, amber=3) -- 3.0 lands exactly on the amber
+    # threshold, same rag_state() "lower" semantics as every other badge.
+    assert row_30["rag"] == "amber"
+    # devices_expiring_60/90 have no matching widget -- informational only,
+    # same as devices_expired's sibling devices_unknown row.
+    assert row_60["rag"] is None
+    assert row_90["rag"] is None
+
+
 # ── get_infra_devices ─────────────────────────────────────────────────────────
 
 def test_get_infra_devices_merges_across_sources_and_normalizes_disk_field():

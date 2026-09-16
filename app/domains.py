@@ -85,6 +85,11 @@ MEMBER_METRICS: dict[str, list[dict]] = {
         {"key": "devices_on_eol_version", "label": "Devices on EOL FortiOS version"},
         {"key": "lifecycle.devices_hw_eos", "label": "Devices with EOS hardware"},
         {"key": "lifecycle.devices_hw_eos_12m", "label": "Devices reaching hardware EOS within 12mo"},
+        {"key": "license_status.devices_expired", "label": "Devices with expired license"},
+        {"key": "license_status.devices_unknown", "label": "Devices with unknown license status"},
+        {"key": "license_status.devices_expiring_30", "label": "Licenses expiring within 30 days"},
+        {"key": "license_status.devices_expiring_60", "label": "Licenses expiring within 60 days"},
+        {"key": "license_status.devices_expiring_90", "label": "Licenses expiring within 90 days"},
     ],
 }
 
@@ -320,6 +325,26 @@ def _domain_inputs(name: str, ts_iso: str, adom: str | None = None) -> dict[str,
             # nonsensical ratio. Not itself a member-table row here (it
             # already is one on the Availability & Change domain).
             "firewall_managed_count": _fleet_sum(system, "firewall_managed_count", ts_iso),
+            # License status — informational member rows only (see Global
+            # Constraints in the license-status-widget plan); not read by
+            # _score_lifecycle, no per-ADOM breakdown to pair with.
+            "license_status.devices_expired": _fleet_sum(
+                system, "license_status.devices_expired", ts_iso
+            ),
+            "license_status.devices_unknown": _fleet_sum(
+                system, "license_status.devices_unknown", ts_iso
+            ),
+            # 30/60/90-day license-expiry lookahead — same informational,
+            # not-scored treatment as devices_expired/devices_unknown above.
+            "license_status.devices_expiring_30": _fleet_sum(
+                system, "license_status.devices_expiring_30", ts_iso
+            ),
+            "license_status.devices_expiring_60": _fleet_sum(
+                system, "license_status.devices_expiring_60", ts_iso
+            ),
+            "license_status.devices_expiring_90": _fleet_sum(
+                system, "license_status.devices_expiring_90", ts_iso
+            ),
         }
     return {}
 

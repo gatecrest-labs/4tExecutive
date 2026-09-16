@@ -200,6 +200,20 @@ EXTRACTORS: dict[str, Callable[[dict], float | None]] = {
     "lifecycle.devices_hw_eos": _nested("lifecycle", "devices_hw_eos"),
     "lifecycle.devices_hw_eos_12m": _nested("lifecycle", "devices_hw_eos_12m"),
     "lifecycle.models_unknown": _no_scalar,
+    # License status (4thealth-plus, app.license_status_cache's daily sweep).
+    "license_status": _no_scalar,
+    "license_status.devices_licensed": _nested("license_status", "devices_licensed"),
+    "license_status.devices_expired": _nested("license_status", "devices_expired"),
+    "license_status.devices_unknown": _nested("license_status", "devices_unknown"),
+    "license_status.details": _no_scalar,
+    # 30/60/90-day license-expiry lookahead — same "within N" cumulative
+    # convention as lifecycle.devices_hw_eos_12m above, computed by
+    # 4thealth-plus at request time from the same daily sweep (see that
+    # repo's app.license_status_cache.compute_expiring_soon()).
+    "license_status.devices_expiring_30": _nested("license_status", "devices_expiring_30"),
+    "license_status.devices_expiring_60": _nested("license_status", "devices_expiring_60"),
+    "license_status.devices_expiring_90": _nested("license_status", "devices_expiring_90"),
+    "license_status.expiring_soon": _no_scalar,
     "devices_on_eol_version": _devices_on_eol_version,
     # Per-ADOM breakdown and management-plane infra — both composite,
     # dynamically-shaped fields with no single scalar of their own; see
@@ -289,7 +303,9 @@ def _cli_backfill() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backfill", action="store_true", help="Backfill metric_points from existing snapshots")
+    parser.add_argument(
+        "--backfill", action="store_true", help="Backfill metric_points from existing snapshots"
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.backfill:
