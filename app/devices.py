@@ -73,6 +73,19 @@ def _rows_lifecycle(value: dict) -> list[dict]:
             row.setdefault("version", version)
             row["detail_text"] = str(row.get("version"))
             rows.append(row)
+    # License status — only non-"licensed" devices ever appear in this list
+    # (see the companion 4thealth-plus repo's license_status_cache design),
+    # so every entry here is already a problem worth surfacing.
+    for entry in _as_list(_as_dict(value.get("license_status")).get("details")):
+        if not isinstance(entry, dict):
+            continue
+        row = dict(entry)
+        if entry.get("status") == "expired":
+            expires = entry.get("expires")
+            row["detail_text"] = f"license expired ({expires})" if expires else "license expired"
+        else:
+            row["detail_text"] = "license status unknown"
+        rows.append(row)
     return rows
 
 

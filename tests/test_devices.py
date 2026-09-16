@@ -138,6 +138,43 @@ def test_get_domain_devices_lifecycle_missing_devices_list_yields_no_rows():
     assert get_domain_devices("lifecycle") == []
 
 
+def test_get_domain_devices_lifecycle_includes_license_status_details():
+    _add_source("s1", "4thealth")
+    write_snapshot(
+        "s1",
+        "summary",
+        {
+            "license_status": {
+                "devices_licensed": 40,
+                "devices_expired": 1,
+                "devices_unknown": 1,
+                "details": [
+                    {"device": "fw-expired", "adom": "Corp", "status": "expired", "expires": "2026-08-01"},
+                    {"device": "fw-unknown", "adom": "Corp", "status": "unknown", "expires": None},
+                ],
+            }
+        },
+        _iso(5),
+    )
+
+    rows = get_domain_devices("lifecycle")
+
+    expired_row = next(r for r in rows if r["device"] == "fw-expired")
+    assert expired_row["detail_text"] == "license expired (2026-08-01)"
+
+    unknown_row = next(r for r in rows if r["device"] == "fw-unknown")
+    assert unknown_row["detail_text"] == "license status unknown"
+
+
+def test_get_domain_devices_lifecycle_license_status_absent_yields_no_extra_rows():
+    _add_source("s1", "4thealth")
+    write_snapshot("s1", "summary", {"hygiene_score": 92}, _iso(5))
+
+    rows = get_domain_devices("lifecycle")
+
+    assert rows == []
+
+
 def test_get_domain_devices_logging_reads_silent_devices():
     _add_source("s1", "4tlog")
     write_snapshot(
