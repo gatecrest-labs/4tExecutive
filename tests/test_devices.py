@@ -175,6 +175,52 @@ def test_get_domain_devices_lifecycle_license_status_absent_yields_no_extra_rows
     assert rows == []
 
 
+def test_get_domain_devices_lifecycle_includes_expiring_soon():
+    _add_source("s1", "4thealth")
+    write_snapshot(
+        "s1",
+        "summary",
+        {
+            "license_status": {
+                "devices_licensed": 40,
+                "expiring_soon": [
+                    {
+                        "device": "fw-soon",
+                        "adom": "Corp",
+                        "expires": "2026-10-04",
+                        "days_until": 18,
+                    }
+                ],
+            }
+        },
+        _iso(5),
+    )
+
+    rows = get_domain_devices("lifecycle")
+
+    soon_row = next(r for r in rows if r["device"] == "fw-soon")
+    assert soon_row["detail_text"] == "license expires in 18 days (2026-10-04)"
+
+
+def test_get_domain_devices_lifecycle_expiring_soon_missing_days_until():
+    _add_source("s1", "4thealth")
+    write_snapshot(
+        "s1",
+        "summary",
+        {
+            "license_status": {
+                "expiring_soon": [{"device": "fw-soon", "adom": "Corp", "expires": "2026-10-04"}],
+            }
+        },
+        _iso(5),
+    )
+
+    rows = get_domain_devices("lifecycle")
+
+    soon_row = next(r for r in rows if r["device"] == "fw-soon")
+    assert soon_row["detail_text"] == "license expires soon (2026-10-04)"
+
+
 def test_get_domain_devices_logging_reads_silent_devices():
     _add_source("s1", "4tlog")
     write_snapshot(

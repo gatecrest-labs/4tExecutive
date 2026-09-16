@@ -260,6 +260,12 @@ def test_extract_all_covers_license_status_fields():
             "devices_expired": 2,
             "devices_unknown": 1,
             "details": [{"device": "fw-a", "adom": "Corp", "status": "expired", "expires": None}],
+            "devices_expiring_30": 3,
+            "devices_expiring_60": 5,
+            "devices_expiring_90": 8,
+            "expiring_soon": [
+                {"device": "fw-b", "adom": "Corp", "expires": "2026-10-01", "days_until": 15}
+            ],
             "collected_at": "2026-09-16T03:00:00Z",
         }
     }
@@ -267,8 +273,12 @@ def test_extract_all_covers_license_status_fields():
     assert points["license_status.devices_licensed"] == 40.0
     assert points["license_status.devices_expired"] == 2.0
     assert points["license_status.devices_unknown"] == 1.0
+    assert points["license_status.devices_expiring_30"] == 3.0
+    assert points["license_status.devices_expiring_60"] == 5.0
+    assert points["license_status.devices_expiring_90"] == 8.0
     assert "license_status" not in points
     assert "license_status.details" not in points
+    assert "license_status.expiring_soon" not in points
 
 
 def test_extract_all_omits_license_status_keys_when_absent():
@@ -276,3 +286,6 @@ def test_extract_all_omits_license_status_keys_when_absent():
     assert "license_status.devices_licensed" not in points
     assert "license_status.devices_expired" not in points
     assert "license_status.devices_unknown" not in points
+    assert "license_status.devices_expiring_30" not in points
+    assert "license_status.devices_expiring_60" not in points
+    assert "license_status.devices_expiring_90" not in points

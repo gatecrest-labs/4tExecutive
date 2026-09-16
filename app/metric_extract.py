@@ -206,6 +206,14 @@ EXTRACTORS: dict[str, Callable[[dict], float | None]] = {
     "license_status.devices_expired": _nested("license_status", "devices_expired"),
     "license_status.devices_unknown": _nested("license_status", "devices_unknown"),
     "license_status.details": _no_scalar,
+    # 30/60/90-day license-expiry lookahead — same "within N" cumulative
+    # convention as lifecycle.devices_hw_eos_12m above, computed by
+    # 4thealth-plus at request time from the same daily sweep (see that
+    # repo's app.license_status_cache.compute_expiring_soon()).
+    "license_status.devices_expiring_30": _nested("license_status", "devices_expiring_30"),
+    "license_status.devices_expiring_60": _nested("license_status", "devices_expiring_60"),
+    "license_status.devices_expiring_90": _nested("license_status", "devices_expiring_90"),
+    "license_status.expiring_soon": _no_scalar,
     "devices_on_eol_version": _devices_on_eol_version,
     # Per-ADOM breakdown and management-plane infra — both composite,
     # dynamically-shaped fields with no single scalar of their own; see

@@ -620,6 +620,28 @@ def test_domain_member_table_license_status_rows_absent_when_no_data():
     assert expired_row["now"] is None
 
 
+def test_domain_member_table_includes_license_expiring_soon_rows():
+    _add_source("s1", "4thealth")
+    insert_metric_points(
+        "s1",
+        _iso(5),
+        {
+            "license_status.devices_expiring_30": 3.0,
+            "license_status.devices_expiring_60": 5.0,
+            "license_status.devices_expiring_90": 8.0,
+        },
+    )
+
+    rows = domain_member_table("lifecycle")
+
+    row_30 = next(r for r in rows if r["key"] == "license_status.devices_expiring_30")
+    row_60 = next(r for r in rows if r["key"] == "license_status.devices_expiring_60")
+    row_90 = next(r for r in rows if r["key"] == "license_status.devices_expiring_90")
+    assert row_30["now"] == 3.0
+    assert row_60["now"] == 5.0
+    assert row_90["now"] == 8.0
+
+
 # ── get_infra_devices ─────────────────────────────────────────────────────────
 
 def test_get_infra_devices_merges_across_sources_and_normalizes_disk_field():
