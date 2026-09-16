@@ -43,6 +43,7 @@ WIDGET_DOMAIN: dict[str, str] = {
     "4thealth.rule_hygiene": "hygiene",
     "4thealth.version_breakdown": "lifecycle",
     "4thealth.license_status": "lifecycle",
+    "4thealth.license_expiring_soon": "lifecycle",
     "4thealth.ai_usage_24h": "logging",
     "4tlog.faz_health": "logging",
     "4tlog.log_volume_trend": "logging",

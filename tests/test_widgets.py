@@ -267,6 +267,7 @@ def test_default_layout_one_widget_per_catalog_entry_per_matching_source():
         "4thealth.device_review_posture",
         "4thealth.rule_hygiene",
         "4thealth.license_status",
+        "4thealth.license_expiring_soon",
         "4thealth.firewall_online_count",
     }
     expected = {
@@ -1547,3 +1548,90 @@ def test_is_stale_license_status_uses_collected_at():
 
     value_fresh = {"license_status": {"collected_at": _iso(5)}}
     assert _is_stale(value_fresh, "4thealth.license_status") is False
+
+
+def test_catalog_has_license_expiring_soon_widget():
+    entry = WIDGET_CATALOG["4thealth.license_expiring_soon"]
+    assert entry["source_system"] == "4thealth"
+    assert entry["chart_type"] == "bar"
+    assert entry["field"] == "license_status"
+    assert entry["metric_key"] == "license_status.devices_expiring_30"
+
+
+def test_get_widget_series_license_expiring_soon_computes_exclusive_buckets():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "license_status": {
+                "devices_expiring_30": 2,
+                "devices_expiring_60": 5,
+                "devices_expiring_90": 9,
+                "expiring_soon": [],
+                "collected_at": "2026-09-16T03:00:00Z",
+            }
+        },
+        "2026-09-16T09:00:00Z",
+    )
+    widget = {"type": "4thealth.license_expiring_soon", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {"≤30 days": 2, "31–60 days": 3, "61–90 days": 4}
+    assert result["collected_at"] == "2026-09-16T09:00:00Z"
+    assert result["rag"] == "amber"
+
+
+def test_get_widget_series_license_expiring_soon_green_when_none_expiring():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "license_status": {
+                "devices_expiring_30": 0,
+                "devices_expiring_60": 0,
+                "devices_expiring_90": 0,
+                "expiring_soon": [],
+                "collected_at": "2026-09-16T03:00:00Z",
+            }
+        },
+        "2026-09-16T09:00:00Z",
+    )
+    widget = {"type": "4thealth.license_expiring_soon", "source_instance": "s1"}
+
+    assert get_widget_series(widget, "30d")["rag"] == "green"
+
+
+def test_get_widget_series_license_expiring_soon_red_when_many_within_30_days():
+    write_snapshot(
+        "s1", "summary",
+        {
+            "license_status": {
+                "devices_expiring_30": 4,
+                "devices_expiring_60": 4,
+                "devices_expiring_90": 4,
+                "expiring_soon": [],
+                "collected_at": "2026-09-16T03:00:00Z",
+            }
+        },
+        "2026-09-16T09:00:00Z",
+    )
+    widget = {"type": "4thealth.license_expiring_soon", "source_instance": "s1"}
+
+    assert get_widget_series(widget, "30d")["rag"] == "red"
+
+
+def test_get_widget_series_license_expiring_soon_no_data_when_absent():
+    write_snapshot("s1", "summary", {"hygiene_score": 90}, "2026-09-16T09:00:00Z")
+    widget = {"type": "4thealth.license_expiring_soon", "source_instance": "s1"}
+
+    result = get_widget_series(widget, "30d")
+
+    assert result["data"] == {}
+    assert "rag" not in result
+
+
+def test_is_stale_license_expiring_soon_uses_collected_at():
+    value = {"license_status": {"collected_at": _iso(3000)}}
+    assert _is_stale(value, "4thealth.license_expiring_soon") is True
+
+    value_fresh = {"license_status": {"collected_at": _iso(5)}}
+    assert _is_stale(value_fresh, "4thealth.license_expiring_soon") is False

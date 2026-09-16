@@ -59,6 +59,7 @@ _FIELD_GROUP_FRESHNESS: dict[str, tuple[str, int]] = {
     # 2880 = 2x a daily sweep's expected interval (24h), same reasoning as
     # device_review_posture's 48h threshold for its own daily-ish rollup.
     "4thealth.license_status": ("license_status", 2880),
+    "4thealth.license_expiring_soon": ("license_status", 2880),
     # 40 = 2x the realistic worst-case age: 4tlog's 5-minute logstats collection
     # interval plus 4tExecutive's own default 15-minute poll interval (this
     # timestamp only advances when 4tExecutive polls the source), not just
@@ -268,6 +269,22 @@ WIDGET_CATALOG: dict[str, dict] = {
         "chart_type": "bar",
         "rag": {"direction": "lower", "green": 0, "amber": 0},
     },
+    "4thealth.license_expiring_soon": {
+        "label": "License Expiring Soon",
+        "description": "Currently-licensed FortiGates with a support/subscription expiry within 30/60/90 days.",
+        "source_system": "4thealth",
+        "metric_type": "summary",
+        "field": "license_status",
+        "metric_key": "license_status.devices_expiring_30",
+        "direction": "lower",
+        "default_size": "2x2",
+        "chart_type": "bar",
+        # Some near-term expiries are normal (renewal cycles) — unlike
+        # devices_expired's zero-tolerance 0/0, a handful expiring within 30
+        # days is only amber; it takes several before this goes red. Same
+        # green/amber split as 4thealth.devices_out_of_sync.
+        "rag": {"direction": "lower", "green": 0, "amber": 3},
+    },
     "4thealth.ai_usage_24h": {
         "label": "AI Usage (24h)",
         "description": "AI assistant connections and estimated cost over the trailing 24 hours.",
@@ -420,14 +437,15 @@ def default_layout() -> list[dict]:
     (4texecutive.*) are excluded — they live on the Admin > System page,
     not the executive dashboard.
 
-    Four widgets are conditional. The AI usage widget is only included when
+    Six widgets are conditional. The AI usage widget is only included when
     the source's latest snapshot reports ai_enabled: true, since most 4thealth
     instances won't have AI turned on and an always-empty tile isn't useful
     default clutter. The rollup widgets (device_review_posture, rule_hygiene,
-    silent_devices) are only included when the latest snapshot actually
-    carries that rollup — a source release that hasn't shipped the rollup yet
-    would otherwise get a tile reading "No data yet" forever, changing its
-    dashboard for the worse just because 4tExecutive upgraded.
+    license_status, license_expiring_soon, silent_devices) are only included
+    when the latest snapshot actually carries that rollup — a source release
+    that hasn't shipped the rollup yet would otherwise get a tile reading
+    "No data yet" forever, changing its dashboard for the worse just because
+    4tExecutive upgraded.
 
     A user who manually saves a layout containing any of them still sees it
     regardless (falls back to "No data yet" like any other widget with a
@@ -448,6 +466,7 @@ def default_layout() -> list[dict]:
                 "4thealth.device_review_posture",
                 "4thealth.rule_hygiene",
                 "4thealth.license_status",
+                "4thealth.license_expiring_soon",
                 "4tlog.silent_devices",
             ):
                 latest = get_latest(source["id"], entry["metric_type"])
@@ -807,6 +826,31 @@ def get_widget_series(widget_instance: dict, range_key: str) -> dict | None:
                 "collected_at": latest["collected_at"],
             }
             result["rag"] = "red" if expired > 0 else "green"
+            return result
+
+        if widget_instance["type"] == "4thealth.license_expiring_soon":
+            license_status = latest["value"].get("license_status")
+            if not license_status:
+                return _attach_rag(
+                    widget_instance["type"], entry, _empty_bar(widget_instance["type"])
+                )
+            within30 = license_status.get("devices_expiring_30") or 0
+            within60 = license_status.get("devices_expiring_60") or 0
+            within90 = license_status.get("devices_expiring_90") or 0
+            # devices_expiring_30/60/90 are cumulative ("within N days" —
+            # see app.license_status_cache.compute_expiring_soon() in the
+            # 4thealth-plus repo), so each bar is the exclusive count for
+            # that window, not the raw cumulative value.
+            result = {
+                "chart": "bar",
+                "data": {
+                    "≤30 days": within30,
+                    "31–60 days": max(0, within60 - within30),
+                    "61–90 days": max(0, within90 - within60),
+                },
+                "collected_at": latest["collected_at"],
+            }
+            result["rag"] = "red" if within30 > 3 else "amber" if within30 > 0 else "green"
             return result
 
         if widget_instance["type"] == "4thealth.rule_hygiene":
