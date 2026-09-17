@@ -75,7 +75,17 @@ def _rows_lifecycle(value: dict) -> list[dict]:
             rows.append(row)
     # License status — only non-"licensed" devices ever appear in this list
     # (see the companion 4thealth-plus repo's license_status_cache design),
-    # so every entry here is already a problem worth surfacing.
+    # so every entry here is already a problem worth surfacing. "status" is
+    # one of "expired" / "offline" / "unregistered" / "unknown" (the latter
+    # two split out of a single "unknown" bucket by 4thealth-plus commit
+    # cfbf87d — "unregistered" means the device responded but has no
+    # FortiCare registration, "unknown" means no payload was returned at
+    # all and conn_status didn't confirm it's down either).
+    _LICENSE_DETAIL_TEXT = {
+        "offline": "device offline",
+        "unregistered": "not registered with FortiCare",
+        "unknown": "license status unknown",
+    }
     for entry in _as_list(_as_dict(value.get("license_status")).get("details")):
         if not isinstance(entry, dict):
             continue
@@ -84,7 +94,9 @@ def _rows_lifecycle(value: dict) -> list[dict]:
             expires = entry.get("expires")
             row["detail_text"] = f"license expired ({expires})" if expires else "license expired"
         else:
-            row["detail_text"] = "license status unknown"
+            row["detail_text"] = _LICENSE_DETAIL_TEXT.get(
+                entry.get("status"), "license status unknown"
+            )
         rows.append(row)
     # License status — devices still "licensed" but expiring within 90 days
     # (see 4thealth-plus's app.license_status_cache.compute_expiring_soon()).
