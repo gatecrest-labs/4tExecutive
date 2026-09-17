@@ -151,6 +151,8 @@ def test_get_domain_devices_lifecycle_includes_license_status_details():
                 "details": [
                     {"device": "fw-expired", "adom": "Corp", "status": "expired", "expires": "2026-08-01"},
                     {"device": "fw-unknown", "adom": "Corp", "status": "unknown", "expires": None},
+                    {"device": "fw-offline", "adom": "Corp", "status": "offline", "expires": None},
+                    {"device": "fw-unregistered", "adom": "Corp", "status": "unregistered", "expires": None},
                 ],
             }
         },
@@ -164,6 +166,12 @@ def test_get_domain_devices_lifecycle_includes_license_status_details():
 
     unknown_row = next(r for r in rows if r["device"] == "fw-unknown")
     assert unknown_row["detail_text"] == "license status unknown"
+
+    offline_row = next(r for r in rows if r["device"] == "fw-offline")
+    assert offline_row["detail_text"] == "device offline"
+
+    unregistered_row = next(r for r in rows if r["device"] == "fw-unregistered")
+    assert unregistered_row["detail_text"] == "not registered with FortiCare"
 
 
 def test_get_domain_devices_lifecycle_license_status_absent_yields_no_extra_rows():
