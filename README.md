@@ -15,6 +15,55 @@ background collector polls each configured source on a schedule and writes
 the results to a local SQLite cache; the dashboard only ever reads from that
 cache.
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+<img src="docs/screenshots/scorecard.png" width="100%">
+
+**Security Scorecard** — six graded domains (Availability, Config Posture, Vulnerability, Policy Hygiene, Logging & Visibility, Lifecycle & Support) rolled into one overall fleet grade.
+
+</td>
+<td width="50%">
+
+<img src="docs/screenshots/board.png" width="100%">
+
+**Metrics Board** — every catalog metric per source, with deltas, sparklines, and target meters; sortable, filterable, and exportable as CSV.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<img src="docs/screenshots/fleet.png" width="100%">
+
+**Fleet Devices** — per-device drill-down merging posture failures, hygiene findings, EOL firmware, silent logging, and PSIRT exposure across every enabled source.
+
+</td>
+<td width="50%">
+
+<img src="docs/screenshots/brief.png" width="100%">
+
+**Weekly Executive Brief** — a print/email-ready summary with headline tiles, "Needs a decision" items, and an editable leadership asks list.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<img src="docs/screenshots/admin.png" width="100%">
+
+**Admin → Sources** — add, refresh, or remove the source systems 4tExecutive polls, with live per-source status.
+
+</td>
+<td width="50%"></td>
+</tr>
+</table>
+
+---
+
 ## Features
 
 - **Scorecard (landing page)** — six graded domains (Availability, Config
