@@ -6,6 +6,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 from app import limiter
 from app.auth import verify_password
+from app.sso_verify import verify_token
 
 bp = Blueprint("auth", __name__)
 
@@ -27,3 +28,15 @@ def login():
 def logout():
     session.pop("username", None)
     return redirect(url_for("auth.login"))
+
+
+@bp.route("/sso/login")
+def sso_login():
+    token = request.args.get("token", "")
+    username = verify_token(token)
+    if username is None:
+        flash("SSO login failed or expired -- please log in directly.", "danger")
+        return redirect(url_for("auth.login"))
+    session.clear()  # fully re-derive -- never trust stale session state
+    session["username"] = username
+    return redirect(url_for("dashboard.index"))
