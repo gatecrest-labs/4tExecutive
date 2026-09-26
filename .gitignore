@@ -2,6 +2,7 @@
 config/*.json
 !config/examples/*.example.json
 config/certs/
+config/sso_public_key.pem
 certs/
 metrics.db
 .env
