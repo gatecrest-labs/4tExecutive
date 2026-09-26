@@ -96,3 +96,27 @@ def test_verify_token_rejects_when_public_key_file_is_missing(keypair, tmp_path,
     token = _make_token(keypair)
 
     assert verify_token(token) is None
+
+
+def test_verify_token_rejects_a_token_missing_exp_claim(keypair):
+    # Finding 1: PyJWT only validates exp if it's present, so a token
+    # missing exp entirely would verify as valid and never expire.
+    now = datetime.datetime.now(datetime.UTC)
+    claims = {
+        "sub": "alice",
+        "aud": "4texecutive",
+        "iss": "4tsuite",
+        "iat": now,
+        "nbf": now,
+        # exp intentionally omitted
+    }
+    token = jwt.encode(claims, keypair, algorithm="EdDSA")
+
+    assert verify_token(token) is None
+
+
+def test_verify_token_rejects_a_token_with_empty_sub_claim(keypair):
+    # Finding 2: An empty string sub claim should be treated as missing
+    token = _make_token(keypair, sub="")
+
+    assert verify_token(token) is None

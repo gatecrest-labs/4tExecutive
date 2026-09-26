@@ -29,7 +29,8 @@ def verify_token(token: str) -> str | None:
             audience=APP_ID,
             issuer="4tsuite",
             leeway=30,
+            options={"require": ["exp", "iat", "nbf", "sub", "aud", "iss"]},
         )
     except jwt.InvalidTokenError:
         return None
-    return claims.get("sub")
+    return claims.get("sub") or None
