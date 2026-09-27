@@ -186,3 +186,11 @@ def test_verify_service_token_rejects_a_login_token_lacking_scope(keypair):
     token = _make_token(keypair)
 
     assert verify_service_token(token, expected_scope="groups_push") is None
+
+
+def test_verify_token_rejects_a_service_token_with_a_scope_claim(keypair):
+    # A validly-signed service (groups_push) token must never be usable
+    # to log in via verify_token, even though its sub claim is non-empty.
+    token = _make_service_token(keypair)
+
+    assert verify_token(token) is None

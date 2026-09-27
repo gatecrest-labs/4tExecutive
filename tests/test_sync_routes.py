@@ -96,6 +96,25 @@ def test_receive_group_push_rejects_unknown_group(client, service_keypair, tmp_g
     assert response.status_code == 400
 
 
+def test_receive_group_push_rejects_service_sentinel_username(
+    client, service_keypair, tmp_groups_file
+):
+    # Even with a valid groups_push token, the payload must never be able
+    # to grant group membership to the "_service:4tsuite" sentinel -- that
+    # would let a replayed push token also authenticate as that sentinel
+    # via /sso/login (verify_token rejects scoped tokens, but this closes
+    # the second half of the escalation chain independently).
+    token = _service_token(service_keypair)
+
+    response = client.post(
+        "/4tsuite/groups",
+        json={"username": "_service:4tsuite", "group": "administrators", "member": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+
+
 def test_receive_group_push_works_with_csrf_protection_turned_on(service_keypair, tmp_groups_file):
     csrf_app = create_app(testing=True, enable_csrf=True)
     csrf_client = csrf_app.test_client()

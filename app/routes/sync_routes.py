@@ -31,6 +31,8 @@ def receive_group_push():
     if claims is None:
         abort(403)
     data = request.get_json()
+    if data["username"].startswith("_service:"):
+        abort(400, description="cannot grant group membership to a service sentinel username")
     if data["group"] not in list_group_names():
         abort(400, description=f"no such group: {data['group']}")
     if data["member"]:

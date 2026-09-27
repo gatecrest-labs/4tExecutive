@@ -40,7 +40,7 @@ def _decode(token: str) -> dict | None:
 def verify_token(token: str) -> str | None:
     """Returns the username claim on success, None on any verification failure."""
     claims = _decode(token)
-    if claims is None:
+    if claims is None or "scope" in claims:
         return None
     return claims.get("sub") or None
 
