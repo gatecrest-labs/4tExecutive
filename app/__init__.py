@@ -108,6 +108,10 @@ def create_app(
 
     flask_app.register_blueprint(theme_bp)
 
+    from app.routes.sync_routes import bp as sync_bp
+
+    flask_app.register_blueprint(sync_bp)
+
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
     from app.widgets import WIDGET_CATALOG, gauge_geometry
