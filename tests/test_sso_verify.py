@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import app.sso_verify as sso_verify_module
-from app.sso_verify import verify_token
+from app.sso_verify import verify_service_token, verify_token
 
 
 @pytest.fixture
@@ -120,3 +120,69 @@ def test_verify_token_rejects_a_token_with_empty_sub_claim(keypair):
     token = _make_token(keypair, sub="")
 
     assert verify_token(token) is None
+
+
+def _make_service_token(private_key, **overrides):
+    now = datetime.datetime.now(datetime.UTC)
+    claims = {
+        "sub": "_service:4tsuite",
+        "aud": "4texecutive",
+        "iss": "4tsuite",
+        "scope": "groups_push",
+        "iat": now,
+        "nbf": now,
+        "exp": now + datetime.timedelta(minutes=5),
+    }
+    claims.update(overrides)
+    return jwt.encode(claims, private_key, algorithm="EdDSA")
+
+
+def test_verify_service_token_accepts_a_validly_signed_matching_scope_token(keypair):
+    token = _make_service_token(keypair)
+
+    claims = verify_service_token(token, expected_scope="groups_push")
+
+    assert claims is not None
+    assert claims["scope"] == "groups_push"
+
+
+def test_verify_service_token_rejects_wrong_scope(keypair):
+    token = _make_service_token(keypair, scope="something_else")
+
+    assert verify_service_token(token, expected_scope="groups_push") is None
+
+
+def test_verify_service_token_rejects_missing_scope_claim(keypair):
+    now = datetime.datetime.now(datetime.UTC)
+    claims = {
+        "sub": "_service:4tsuite",
+        "aud": "4texecutive",
+        "iss": "4tsuite",
+        "iat": now,
+        "nbf": now,
+        "exp": now + datetime.timedelta(minutes=5),
+        # scope intentionally omitted
+    }
+    token = jwt.encode(claims, keypair, algorithm="EdDSA")
+
+    assert verify_service_token(token, expected_scope="groups_push") is None
+
+
+def test_verify_service_token_rejects_an_expired_token(keypair):
+    now = datetime.datetime.now(datetime.UTC)
+    token = _make_service_token(
+        keypair,
+        iat=now - datetime.timedelta(minutes=10),
+        nbf=now - datetime.timedelta(minutes=10),
+        exp=now - datetime.timedelta(minutes=5),
+    )
+
+    assert verify_service_token(token, expected_scope="groups_push") is None
+
+
+def test_verify_service_token_rejects_a_login_token_lacking_scope(keypair):
+    # A real login token (from _make_token) has no scope claim at all --
+    # must never be usable against the groups-push verification path.
+    token = _make_token(keypair)
+
+    assert verify_service_token(token, expected_scope="groups_push") is None
