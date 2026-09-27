@@ -44,3 +44,23 @@ def set_user_groups(username: str, group_names: list[str]) -> None:
             members.discard(username)
         cfg["members"] = sorted(members)
     _save_groups(groups)
+
+
+def add_group_member(group_name: str, username: str) -> None:
+    groups = _load_groups()
+    if group_name not in groups:
+        return
+    members = set(groups[group_name].get("members", []))
+    members.add(username)
+    groups[group_name]["members"] = sorted(members)
+    _save_groups(groups)
+
+
+def remove_group_member(group_name: str, username: str) -> None:
+    groups = _load_groups()
+    if group_name not in groups:
+        return
+    members = set(groups[group_name].get("members", []))
+    members.discard(username)
+    groups[group_name]["members"] = sorted(members)
+    _save_groups(groups)
