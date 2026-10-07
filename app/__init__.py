@@ -108,9 +108,24 @@ def create_app(
 
     flask_app.register_blueprint(theme_bp)
 
-    from app.routes.sync_routes import bp as sync_bp
+    from app.groups import add_group_member, list_group_names, remove_group_member
+    from app.sso_verify import APP_ID, verify_service_token
+    from app.tsuite_adapter import create_blueprint
 
-    flask_app.register_blueprint(sync_bp)
+    def _apply_group_change(username: str, group: str, is_member: bool) -> None:
+        (add_group_member if is_member else remove_group_member)(group, username)
+
+    tsuite_bp = create_blueprint(
+        app_id=APP_ID,
+        display_name="4tExecutive",
+        health_path="/login",
+        get_tabs=lambda: ["admin", "brief", "brief_edit", "dashboard"],
+        get_groups=list_group_names,
+        apply_group_change=_apply_group_change,
+        verify_service_token=verify_service_token,
+    )
+    csrf.exempt(tsuite_bp)
+    flask_app.register_blueprint(tsuite_bp)
 
     flask_app.jinja_env.globals["user_has_tab"] = user_has_tab
 
