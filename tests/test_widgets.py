@@ -1035,7 +1035,9 @@ def test_get_widget_series_log_volume_trend_stale_from_log_stats_collected_at():
     write_snapshot(
         "s1", "summary",
         {"log_volume_events_per_sec": 100.0, "log_stats_collected_at": old_ts},
-        "2026-08-29T09:00:00Z",
+        # Relative, not fixed: the series is windowed to 30d, so a hard-coded
+        # date silently ages out of the window.
+        _iso(5),
     )
     widget = {"type": "4tlog.log_volume_trend", "source_instance": "s1"}
 

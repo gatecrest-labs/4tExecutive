@@ -127,3 +127,38 @@ def test_receive_group_push_works_with_csrf_protection_turned_on(service_keypair
     )
 
     assert response.status_code == 204
+
+
+def test_manifest_requires_manifest_read_scope(client, service_keypair):
+    wrong = _service_token(service_keypair, scope="groups_push")
+
+    assert client.get("/4tsuite/manifest").status_code == 403
+    response = client.get("/4tsuite/manifest", headers={"Authorization": f"Bearer {wrong}"})
+    assert response.status_code == 403
+
+
+def test_manifest_describes_app(client, service_keypair, tmp_groups_file):
+    token = _service_token(service_keypair, scope="manifest_read")
+
+    response = client.get("/4tsuite/manifest", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["app_id"] == "4texecutive"
+    assert body["protocol_version"] == 1
+    assert body["tabs"] == ["admin", "brief", "brief_edit", "dashboard"]
+    assert "administrators" in body["groups"]
+
+
+def test_receive_group_push_rejects_malformed_body_with_400(
+    client, service_keypair, tmp_groups_file
+):
+    token = _service_token(service_keypair)
+
+    response = client.post(
+        "/4tsuite/groups",
+        json={"group": "developers"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
