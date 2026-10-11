@@ -21,6 +21,7 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         if verify_password(username, password):
+            session.pop("sso_login_at", None)  # a local session is never revocation-checked
             session["username"] = username
             if not user_has_any_tab(username):
                 return redirect(url_for("auth.no_access"))
@@ -39,6 +40,7 @@ def no_access():
 @bp.route("/logout", methods=["POST"])
 def logout():
     session.pop("username", None)
+    session.pop("sso_login_at", None)
     return redirect(url_for("auth.login"))
 
 

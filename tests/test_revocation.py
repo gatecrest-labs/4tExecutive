@@ -98,3 +98,29 @@ def test_factory_builds_checker_from_env(tmp_config_dir, tmp_path, monkeypatch):
     monkeypatch.delenv("TSUITE_REVOCATIONS_URL")
     unconfigured = create_app(testing=True)
     assert unconfigured.extensions["tsuite_session_checker"] is None
+
+
+def test_logout_removes_sso_login_time(client, tmp_path, monkeypatch, tmp_groups_file):
+    key = _write_test_keypair(tmp_path, monkeypatch)
+    client.get(f"/sso/login?token={_sso_token(key)}")
+    client.post("/logout")
+    with client.session_transaction() as sess:
+        assert "sso_login_at" not in sess
+
+
+def test_local_login_after_sso_session_is_never_checked(
+    app, client, tmp_path, monkeypatch, tmp_groups_file, tmp_users_file
+):
+    key = _write_test_keypair(tmp_path, monkeypatch)
+    client.get(f"/sso/login?token={_sso_token(key)}")
+    # Local login without an intervening logout: stale SSO marker must not survive.
+    client.post("/login", data={"username": "alice", "password": "correct-horse"})
+    with client.session_transaction() as sess:
+        assert sess["username"] == "alice"
+        assert "sso_login_at" not in sess
+
+    def explode(username, login_at):
+        raise AssertionError("checker must not run for local sessions")
+
+    app.extensions["tsuite_session_checker"] = explode
+    assert client.get("/board").status_code == 200
