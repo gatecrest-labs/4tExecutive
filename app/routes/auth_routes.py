@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from app import limiter
@@ -49,6 +51,7 @@ def sso_login():
         return redirect(url_for("auth.login"))
     session.clear()  # fully re-derive -- never trust stale session state
     session["username"] = username
+    session["sso_login_at"] = time.time()
     if not user_has_any_tab(username):
         return redirect(url_for("auth.no_access"))
     return redirect(url_for("dashboard.index"))
