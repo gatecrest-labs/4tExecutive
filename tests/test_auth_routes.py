@@ -18,9 +18,7 @@ def test_login_page_uses_login_card_layout(client):
 def test_login_with_valid_credentials_redirects_and_sets_session(client, tmp_path, monkeypatch):
     users_path = tmp_path / "users.json"
     users_path.write_text(
-        json.dumps(
-            {"users": [{"username": "alice", "password_hash": _hash("secret")}]}
-        )
+        json.dumps({"users": [{"username": "alice", "password_hash": _hash("secret")}]})
     )
     monkeypatch.setattr(auth_module, "USERS_PATH", users_path)
 
@@ -98,7 +96,9 @@ def _sso_token(private_key, **overrides):
     return jwt.encode(claims, private_key, algorithm="EdDSA")
 
 
-def test_sso_login_with_valid_token_sets_session_and_redirects(client, tmp_path, monkeypatch):
+def test_sso_login_with_valid_token_sets_session_and_redirects(
+    client, tmp_path, monkeypatch, tmp_groups_file
+):
     private_key = _write_test_keypair(tmp_path, monkeypatch)
 
     token = _sso_token(private_key)
