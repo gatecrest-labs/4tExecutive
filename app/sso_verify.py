@@ -16,6 +16,7 @@ import hashlib
 import re
 
 import jwt
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 
 from app.config_paths import CONFIG_DIR
@@ -47,7 +48,7 @@ def _load_keys() -> dict[str, bytes]:
             raw = serialization.load_pem_public_key(block).public_bytes(
                 serialization.Encoding.Raw, serialization.PublicFormat.Raw
             )
-        except ValueError:
+        except (ValueError, TypeError, UnsupportedAlgorithm):
             continue
         found[hashlib.sha256(raw).hexdigest()[:16]] = block
     return found
@@ -61,7 +62,8 @@ def _decode(token: str) -> dict | None:
         kid = jwt.get_unverified_header(token).get("kid")
     except jwt.InvalidTokenError:
         return None
-    candidates = [keys[kid]] if kid in keys else list(keys.values())
+    # Only a string kid can select a key; any other type is treated as absent.
+    candidates = [keys[kid]] if isinstance(kid, str) and kid in keys else list(keys.values())
     for pem in candidates:
         try:
             return jwt.decode(
@@ -75,7 +77,7 @@ def _decode(token: str) -> dict | None:
             )
         except jwt.InvalidSignatureError:
             continue
-        except jwt.InvalidTokenError:
+        except jwt.PyJWTError:
             return None
     return None
 
