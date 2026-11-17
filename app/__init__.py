@@ -110,7 +110,10 @@ def create_app(
 
     from app.groups import add_group_member, list_group_names, remove_group_member
     from app.sso_verify import APP_ID, verify_service_token
-    from app.tsuite_adapter import create_blueprint
+    from app.tsuite_adapter import create_blueprint, session_checker_from_env
+
+    checker = session_checker_from_env()
+    flask_app.extensions["tsuite_session_checker"] = checker  # None disables the check
 
     def _apply_group_change(username: str, group: str, is_member: bool) -> None:
         (add_group_member if is_member else remove_group_member)(group, username)
@@ -123,6 +126,7 @@ def create_app(
         get_groups=list_group_names,
         apply_group_change=_apply_group_change,
         verify_service_token=verify_service_token,
+        capabilities=["revocations"] if checker else [],
     )
     csrf.exempt(tsuite_bp)
     flask_app.register_blueprint(tsuite_bp)

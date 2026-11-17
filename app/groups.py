@@ -33,6 +33,11 @@ def user_has_tab(username: str, tab: str) -> bool:
     return False
 
 
+def user_has_any_tab(username: str) -> bool:
+    groups = _load_groups()
+    return any(groups.get(name, {}).get("allowed_tabs") for name in get_user_groups(username))
+
+
 def set_user_groups(username: str, group_names: list[str]) -> None:
     groups = _load_groups()
     wanted = set(group_names)
